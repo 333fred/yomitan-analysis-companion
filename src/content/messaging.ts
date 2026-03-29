@@ -4,7 +4,15 @@
 /** Messages sent from content script → background */
 interface AnalyzeRequest {
   type: 'ANALYZE_REQUEST';
-  payload: { word: string; sentence: string; wordOffset: number };
+  payload: {
+    word: string;
+    sentence: string;
+    wordOffset: number;
+    modelOverride?: {
+      providerType: string;
+      model: string;
+    };
+  };
 }
 
 interface ValidateProviderRequest {
@@ -15,7 +23,12 @@ interface GetConfigRequest {
   type: 'GET_CONFIG';
 }
 
-type OutboundMessage = AnalyzeRequest | ValidateProviderRequest | GetConfigRequest;
+interface FetchModelsRequest {
+  type: 'FETCH_MODELS';
+  payload?: { token?: string };
+}
+
+type OutboundMessage = AnalyzeRequest | ValidateProviderRequest | GetConfigRequest | FetchModelsRequest;
 
 /** Messages received over a streaming port from background → content */
 interface AnalyzeChunkMessage {
@@ -72,6 +85,7 @@ export function requestAnalysis(
     onComplete: () => void;
     onError: (error: string, retryable: boolean) => void;
   },
+  modelOverride?: { providerType: string; model: string },
 ): () => void {
   const port = chrome.runtime.connect({ name: PORT_NAME });
 
@@ -110,7 +124,7 @@ export function requestAnalysis(
   // Send the analysis request over the port
   const request: AnalyzeRequest = {
     type: 'ANALYZE_REQUEST',
-    payload: data,
+    payload: { ...data, ...(modelOverride ? { modelOverride } : {}) },
   };
   port.postMessage(request);
 
@@ -142,6 +156,17 @@ export async function validateProvider(): Promise<ValidateProviderResponse> {
 export async function getConfig(): Promise<ExtensionConfig> {
   const message: GetConfigRequest = { type: 'GET_CONFIG' };
   return sendMessage<ExtensionConfig>(message);
+}
+
+export async function fetchModels(token?: string): Promise<{
+  models: Array<{ id: string; name: string; publisher: string }>;
+  error?: string;
+}> {
+  const message: FetchModelsRequest = {
+    type: 'FETCH_MODELS',
+    ...(token ? { payload: { token } } : {}),
+  };
+  return sendMessage(message);
 }
 
 // ── Internal ────────────────────────────────────────────────────────────

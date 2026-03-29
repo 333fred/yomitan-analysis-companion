@@ -113,4 +113,8 @@ export class PanelHost {
   hideReopenButton(): void {
     this.reopenBtn?.classList.add('ycc-hidden');
   }
+
+  getHostElement(): HTMLElement | null {
+    return this.hostElement;
+  }
 }

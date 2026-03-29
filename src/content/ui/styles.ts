@@ -311,6 +311,84 @@ export function getStyles(theme: 'light' | 'dark'): string {
 @keyframes ycc-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .ycc-streaming-cursor::after { content: '▎'; display: inline-block; color: var(--ycc-accent); animation: ycc-blink 0.8s step-end infinite; margin-left: 1px; }
 
+/* ── Sentence Display ── */
+.ycc-sentence-display {
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: var(--ycc-bg-secondary);
+  border: 1px solid var(--ycc-border);
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ycc-text);
+  word-break: break-word;
+}
+
+.ycc-sentence-word {
+  background: color-mix(in srgb, var(--ycc-accent) 18%, transparent);
+  color: var(--ycc-accent);
+  padding: 1px 2px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* ── Panel Footer / Model Switcher ── */
+.ycc-side-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--ycc-border);
+  background: var(--ycc-bg-secondary);
+  flex-shrink: 0;
+}
+
+.ycc-model-select {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--ycc-border);
+  border-radius: 6px;
+  background: var(--ycc-bg);
+  color: var(--ycc-text);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.ycc-model-select:focus {
+  border-color: var(--ycc-accent);
+}
+
+.ycc-make-default-btn {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--ycc-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ycc-text-secondary);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, border-color 0.12s, opacity 0.12s;
+  pointer-events: auto;
+}
+
+.ycc-make-default-btn:hover:not(:disabled) {
+  background: var(--ycc-bg-hover);
+  color: var(--ycc-text);
+  border-color: var(--ycc-accent);
+}
+
+.ycc-make-default-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ── Utility ── */
 .ycc-hidden { display: none !important; }
 `;

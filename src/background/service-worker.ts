@@ -17,6 +17,7 @@ chrome.runtime.onConnect.addListener((port) => {
         word: string;
         sentence: string;
         wordOffset: number;
+        modelOverride?: { providerType: string; model: string };
       };
       await handleAnalysisRequest(port, payload);
     }
@@ -48,7 +49,12 @@ chrome.runtime.onMessage.addListener(
  */
 async function handleAnalysisRequest(
   port: chrome.runtime.Port,
-  payload: { word: string; sentence: string; wordOffset: number },
+  payload: {
+    word: string;
+    sentence: string;
+    wordOffset: number;
+    modelOverride?: { providerType: string; model: string };
+  },
 ): Promise<void> {
   let disconnected = false;
   const onDisconnect = () => {
@@ -58,6 +64,24 @@ async function handleAnalysisRequest(
 
   try {
     const config = await getConfig();
+
+    // Apply model override if provided
+    if (payload.modelOverride) {
+      const { providerType, model } = payload.modelOverride;
+      config.provider.type = providerType as typeof config.provider.type;
+      switch (providerType) {
+        case 'github-models':
+          if (config.provider.githubModels) config.provider.githubModels.model = model;
+          break;
+        case 'anthropic':
+          if (config.provider.anthropic) config.provider.anthropic.model = model;
+          break;
+        case 'openai-compatible':
+          if (config.provider.openaiCompatible) config.provider.openaiCompatible.model = model;
+          break;
+      }
+    }
+
     const provider = createProvider(config.provider);
     const messages = buildAnalysisMessages(
       payload.word,

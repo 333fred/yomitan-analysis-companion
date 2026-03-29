@@ -19,6 +19,10 @@ export interface AnalyzeRequest {
     wordOffset: number;
     pageUrl: string;
     pageTitle: string;
+    modelOverride?: {
+      providerType: ProviderConfig['type'];
+      model: string;
+    };
   };
 }
 
