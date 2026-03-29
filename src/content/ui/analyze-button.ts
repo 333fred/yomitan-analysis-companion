@@ -13,7 +13,7 @@ export class AnalyzeButton {
     const btn = document.createElement('button');
     btn.className = 'ycc-button ycc-hidden';
     btn.type = 'button';
-    btn.innerHTML = `<span class="ycc-button-icon">✨</span><span class="ycc-button-label">Analyze</span>`;
+    btn.innerHTML = `<span class="ycc-button-icon">✨</span><span class="ycc-button-label">Explain</span>`;
 
     parentShadowRoot.appendChild(btn);
     this.element = btn;
@@ -28,33 +28,43 @@ export class AnalyzeButton {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const gap = 4;
+    // The popup rect comes from elementFromPoint probing in 20px steps,
+    // so the real popup can extend up to 20px beyond the probed edges.
+    const probeMargin = 20;
 
-    // Preferred: centered below the popup
-    if (popupRect.bottom + gap + btnH <= vh) {
-      const left = popupRect.left + (popupRect.width - btnW) / 2;
-      this.element.style.left = `${clamp(left, gap, vw - btnW - gap)}px`;
-      this.element.style.top = `${popupRect.bottom + gap}px`;
+    // Preferred: top-left, just above the popup
+    if (popupRect.top - probeMargin - gap - btnH >= 0) {
+      const left = clamp(popupRect.left, gap, vw - btnW - gap);
+      this.element.style.left = `${left}px`;
+      this.element.style.top = `${popupRect.top - probeMargin - gap - btnH}px`;
       return;
     }
 
-    // Fallback: to the right of the popup, vertically centered
-    if (popupRect.right + gap + btnW <= vw) {
-      this.element.style.left = `${popupRect.right + gap}px`;
-      this.element.style.top = `${clamp(popupRect.top + (popupRect.height - btnH) / 2, gap, vh - btnH - gap)}px`;
+    // Fallback: top-left, just below the popup
+    if (popupRect.bottom + probeMargin + gap + btnH <= vh) {
+      const left = clamp(popupRect.left, gap, vw - btnW - gap);
+      this.element.style.left = `${left}px`;
+      this.element.style.top = `${popupRect.bottom + probeMargin + gap}px`;
       return;
     }
 
-    // Fallback: to the left of the popup
-    if (popupRect.left - gap - btnW >= 0) {
-      this.element.style.left = `${popupRect.left - gap - btnW}px`;
-      this.element.style.top = `${clamp(popupRect.top + (popupRect.height - btnH) / 2, gap, vh - btnH - gap)}px`;
+    // Fallback: to the left of the popup, top-aligned
+    if (popupRect.left - probeMargin - gap - btnW >= 0) {
+      this.element.style.left = `${popupRect.left - probeMargin - gap - btnW}px`;
+      this.element.style.top = `${clamp(popupRect.top, gap, vh - btnH - gap)}px`;
       return;
     }
 
-    // Last resort: above the popup, centered
-    const left = popupRect.left + (popupRect.width - btnW) / 2;
-    this.element.style.left = `${clamp(left, gap, vw - btnW - gap)}px`;
-    this.element.style.top = `${Math.max(gap, popupRect.top - gap - btnH)}px`;
+    // Fallback: to the right of the popup, top-aligned
+    if (popupRect.right + probeMargin + gap + btnW <= vw) {
+      this.element.style.left = `${popupRect.right + probeMargin + gap}px`;
+      this.element.style.top = `${clamp(popupRect.top, gap, vh - btnH - gap)}px`;
+      return;
+    }
+
+    // Last resort: top-left, clamped to viewport
+    this.element.style.left = `${clamp(popupRect.left, gap, vw - btnW - gap)}px`;
+    this.element.style.top = `${Math.max(gap, popupRect.top - probeMargin - gap - btnH)}px`;
   }
 
   show(): void {
@@ -97,10 +107,10 @@ export class AnalyzeButton {
 
     if (loading) {
       iconSpan.innerHTML = '<span class="ycc-spinner"></span>';
-      labelSpan.textContent = 'Analyzing…';
+      labelSpan.textContent = 'Explaining…';
     } else {
       iconSpan.textContent = '✨';
-      labelSpan.textContent = 'Analyze';
+      labelSpan.textContent = 'Explain';
     }
   }
 
