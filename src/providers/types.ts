@@ -1,5 +1,7 @@
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+
 export interface LLMRequest {
-  messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+  messages: ChatCompletionMessageParam[];
   model?: string;
   temperature?: number;
   maxTokens?: number;
