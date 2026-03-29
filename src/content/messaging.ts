@@ -92,10 +92,14 @@ export function requestAnalysis(
   };
 
   const handleDisconnect = () => {
-    // If the background disconnected unexpectedly, treat it as an error
-    const lastError = chrome.runtime.lastError;
-    if (lastError) {
-      callbacks.onError(lastError.message ?? 'Port disconnected', true);
+    // If we haven't already received a completion message, treat the
+    // disconnect as an error so the UI can reset (e.g. button spinner).
+    if (!cleaned) {
+      const lastError = chrome.runtime.lastError;
+      callbacks.onError(
+        lastError?.message ?? 'Connection to background lost',
+        true,
+      );
     }
     cleanup();
   };

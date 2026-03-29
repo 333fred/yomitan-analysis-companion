@@ -45,20 +45,18 @@ function onPopupShown(event: YomitanPopupEvent): void {
   if (!event.rect) return;
 
   cancelHideGrace();
-  cancelCurrentAnalysis();
   ensureMounted();
 
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   panelHost.setTheme(isDark ? 'dark' : 'light');
-
-  // Hide stale analysis from a previous lookup
-  panelHost.getPanel().hide();
 
   // Pre-capture sentence while the hovered text is still accessible.
   // Clicking our button will dismiss Yomitan and deselect the text,
   // so we must grab the data now.
   preCapturedSentence = extractor.extractSentence();
 
+  // Don't cancel a running analysis or hide results — the user may still
+  // be reading the panel while Yomitan re-detects on a nearby word.
   panelHost.getButton().show();
   panelHost.positionRelativeTo(event.rect);
 }
@@ -103,7 +101,10 @@ function cancelCurrentAnalysis(): void {
     cancelStream();
     cancelStream = null;
   }
-  isAnalyzing = false;
+  if (isAnalyzing) {
+    panelHost.getButton().setLoading(false);
+    isAnalyzing = false;
+  }
 }
 
 // ── Analysis flow ───────────────────────────────────────────────────────
