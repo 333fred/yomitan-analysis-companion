@@ -113,7 +113,7 @@ export class GitHubModelsProvider implements ILLMProvider {
       model: request.model ?? this.model,
       messages: request.messages,
       temperature: request.temperature ?? 0.3,
-      max_tokens: request.maxTokens ?? 2048,
+      max_completion_tokens: request.maxTokens ?? 2048,
       stream,
     };
   }
