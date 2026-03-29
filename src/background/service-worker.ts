@@ -59,7 +59,11 @@ async function handleAnalysisRequest(
   try {
     const config = await getConfig();
     const provider = createProvider(config.provider);
-    const messages = buildAnalysisMessages(payload.word, payload.sentence);
+    const messages = buildAnalysisMessages(
+      payload.word,
+      payload.sentence,
+      config.analysis.detailLevel,
+    );
 
     const result = await provider.streamRequest({ messages }, (chunk) => {
       if (!disconnected) {

@@ -28,6 +28,19 @@ Guidelines:
 - If the word is conjugated, show the dictionary form and explain the conjugation chain.
 - Mention any common beginner pitfalls related to the grammar or vocabulary.`;
 
+const BRIEF_SYSTEM_PROMPT = `You are a Japanese language teacher. Analyze a sentence focusing on the word the student looked up. Be concise.
+
+Respond in markdown:
+
+## Translation
+Natural English translation.
+
+## Focus: [word]
+Dictionary form, conjugation, part of speech, and usage in context.
+
+## Grammar
+Key grammar points as a short numbered list.`;
+
 export function buildUserPrompt(word: string, sentence: string): string {
   return `I looked up the word「${word}」in the following sentence:
 
@@ -39,11 +52,13 @@ Please analyze this sentence with a focus on「${word}」.`;
 export function buildAnalysisMessages(
   word: string,
   sentence: string,
+  detailLevel: 'full' | 'brief' = 'full',
 ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
+  const systemPrompt = detailLevel === 'brief' ? BRIEF_SYSTEM_PROMPT : SYSTEM_PROMPT;
   return [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
     { role: 'user', content: buildUserPrompt(word, sentence) },
   ];
 }
 
-export { SYSTEM_PROMPT };
+export { SYSTEM_PROMPT, BRIEF_SYSTEM_PROMPT };

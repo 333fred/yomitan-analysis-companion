@@ -137,12 +137,22 @@ function buildStreamResult(
   }
 
   if (!fullText) {
+    if (finishReason === 'length') {
+      return {
+        text: '',
+        provider: providerName,
+        success: false,
+        error:
+          'The prompt exceeded the model\'s context window — no room for output. ' +
+          'Switch to "Brief" detail level in settings, or use a larger model.',
+      };
+    }
     const hint = finishReason ? ` (finish_reason: ${finishReason})` : '';
     return {
       text: '',
       provider: providerName,
       success: false,
-      error: `Model returned an empty response${hint}. The model may not support this request — try a different model.`,
+      error: `Model returned an empty response${hint}. Try a different model.`,
     };
   }
 
