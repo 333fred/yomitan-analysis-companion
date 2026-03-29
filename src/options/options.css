@@ -55,6 +55,62 @@ h1 {
 
 /* ── Provider radio buttons ────────────────────────────────────────── */
 
+.section-description {
+  font-size: 0.85rem;
+  color: #6b7280;
+  margin: 0 0 1rem;
+  line-height: 1.4;
+}
+
+.provider-details {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+}
+
+.provider-details[open] {
+  border-color: #c7d2fe;
+}
+
+.provider-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: #f9fafb;
+  user-select: none;
+  list-style: none;
+}
+
+.provider-summary::-webkit-details-marker {
+  display: none;
+}
+
+.provider-summary::before {
+  content: '▸';
+  font-size: 0.75rem;
+  transition: transform 0.15s;
+  color: #9ca3af;
+}
+
+.provider-details[open] > .provider-summary::before {
+  transform: rotate(90deg);
+}
+
+.provider-details > .provider-settings {
+  padding: 0.75rem 0.85rem 1rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.unified-model-selector {
+  margin-top: 1rem;
+  margin-bottom: 0.75rem;
+}
+
 .provider-selector {
   display: flex;
   flex-direction: column;

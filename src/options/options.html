@@ -12,78 +12,69 @@
     <p class="subtitle">Configure your AI-powered grammar analysis companion</p>
 
     <section class="settings-group">
-      <h2>AI Provider</h2>
+      <h2>AI Providers</h2>
+      <p class="section-description">Configure one or more providers below. Models from all configured providers will appear in the model dropdown.</p>
 
-      <div class="provider-selector">
-        <label class="radio-label">
-          <input type="radio" name="provider" value="github-models" checked>
-          GitHub Models <span class="badge">recommended</span>
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="provider" value="anthropic">
-          Anthropic (Claude)
-        </label>
-        <label class="radio-label">
-          <input type="radio" name="provider" value="openai-compatible">
-          Custom OpenAI-compatible endpoint
-        </label>
-      </div>
+      <!-- GitHub Models credentials -->
+      <details class="provider-details" id="github-models-details" open>
+        <summary class="provider-summary">GitHub Models <span class="badge">recommended</span></summary>
+        <div class="provider-settings">
+          <label class="field">
+            Personal Access Token
+            <input type="password" id="github-token" placeholder="ghp_..." autocomplete="off">
+            <small>Requires <code>models:read</code> scope.
+              <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">Create token →</a>
+            </small>
+          </label>
+        </div>
+      </details>
 
-      <!-- GitHub Models settings -->
-      <div id="github-models-settings" class="provider-settings">
-        <label class="field">
-          GitHub Personal Access Token
-          <input type="password" id="github-token" placeholder="ghp_..." autocomplete="off">
-          <small>Requires <code>models:read</code> scope.
-            <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">Create token →</a>
-          </small>
-        </label>
+      <!-- Anthropic credentials -->
+      <details class="provider-details" id="anthropic-details">
+        <summary class="provider-summary">Anthropic (Claude)</summary>
+        <div class="provider-settings">
+          <label class="field">
+            API Key
+            <input type="password" id="anthropic-key" placeholder="sk-ant-..." autocomplete="off">
+            <small>Get your key from
+              <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com →</a>
+            </small>
+          </label>
+        </div>
+      </details>
+
+      <!-- Custom endpoint credentials -->
+      <details class="provider-details" id="openai-details">
+        <summary class="provider-summary">Custom OpenAI-compatible endpoint</summary>
+        <div class="provider-settings">
+          <label class="field">
+            API Base URL
+            <input type="url" id="openai-url" placeholder="https://api.openai.com/v1">
+            <small>The base URL of the OpenAI-compatible API (without <code>/chat/completions</code>).</small>
+          </label>
+          <label class="field">
+            API Key
+            <input type="password" id="openai-key" placeholder="sk-..." autocomplete="off">
+            <small>Leave blank if your endpoint does not require authentication.</small>
+          </label>
+          <label class="field">
+            Model Name
+            <input type="text" id="openai-model" placeholder="gpt-4-turbo">
+          </label>
+        </div>
+      </details>
+
+      <!-- Unified model selector -->
+      <div class="unified-model-selector">
         <label class="field">
           Model
           <div class="select-with-action">
-            <select id="github-model">
-              <option value="">Loading models…</option>
+            <select id="unified-model">
+              <option value="">Configure a provider above…</option>
             </select>
             <button id="refresh-models-btn" class="btn-icon" type="button" title="Refresh model list">↻</button>
           </div>
-        </label>
-      </div>
-
-      <!-- Anthropic settings -->
-      <div id="anthropic-settings" class="provider-settings" hidden>
-        <label class="field">
-          Anthropic API Key
-          <input type="password" id="anthropic-key" placeholder="sk-ant-..." autocomplete="off">
-          <small>Get your key from
-            <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com →</a>
-          </small>
-        </label>
-        <label class="field">
-          Model
-          <select id="anthropic-model">
-            <option value="claude-opus-4-6">Claude Opus 4.6</option>
-            <option value="claude-sonnet-4-6" selected>Claude Sonnet 4.6</option>
-            <option value="claude-sonnet-4-5">Claude Sonnet 4.5</option>
-            <option value="claude-haiku-4-5">Claude Haiku 4.5</option>
-          </select>
-        </label>
-      </div>
-
-      <!-- Custom endpoint settings -->
-      <div id="openai-settings" class="provider-settings" hidden>
-        <label class="field">
-          API Base URL
-          <input type="url" id="openai-url" placeholder="https://api.openai.com/v1">
-          <small>The base URL of the OpenAI-compatible API (without <code>/chat/completions</code>).</small>
-        </label>
-        <label class="field">
-          API Key
-          <input type="password" id="openai-key" placeholder="sk-..." autocomplete="off">
-          <small>Leave blank if your endpoint does not require authentication.</small>
-        </label>
-        <label class="field">
-          Model Name
-          <input type="text" id="openai-model" placeholder="gpt-4-turbo">
+          <small>Models are grouped by provider. Only providers with credentials entered will show models.</small>
         </label>
       </div>
 

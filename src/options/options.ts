@@ -1,5 +1,6 @@
 import { getConfig, setConfig } from '../shared/storage';
 import { FALLBACK_GITHUB_MODELS } from '../shared/config';
+import { ANTHROPIC_MODELS } from '../providers/anthropic';
 import type {
   ExtensionConfig,
   ProviderConfig,
@@ -12,50 +13,54 @@ import type {
 const $ = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 
-const providerRadios = document.querySelectorAll<HTMLInputElement>(
-  'input[name="provider"]',
-);
-const githubSettings = $<HTMLDivElement>('github-models-settings');
-const anthropicSettings = $<HTMLDivElement>('anthropic-settings');
-const openaiSettings = $<HTMLDivElement>('openai-settings');
-
+// Provider credential fields
 const githubToken = $<HTMLInputElement>('github-token');
-const githubModel = $<HTMLSelectElement>('github-model');
-
 const anthropicKey = $<HTMLInputElement>('anthropic-key');
-const anthropicModel = $<HTMLSelectElement>('anthropic-model');
-
 const openaiUrl = $<HTMLInputElement>('openai-url');
 const openaiKey = $<HTMLInputElement>('openai-key');
 const openaiModel = $<HTMLInputElement>('openai-model');
 
+// Provider detail sections (for auto-open on load)
+const githubDetails = $<HTMLDetailsElement>('github-models-details');
+const anthropicDetails = $<HTMLDetailsElement>('anthropic-details');
+const openaiDetails = $<HTMLDetailsElement>('openai-details');
+
+// Unified model selector
+const unifiedModel = $<HTMLSelectElement>('unified-model');
+const refreshModelsBtn = $<HTMLButtonElement>('refresh-models-btn');
+
+// Analysis
 const explanationLanguage = $<HTMLSelectElement>('explanation-language');
 const detailLevel = $<HTMLSelectElement>('detail-level');
 const theme = $<HTMLSelectElement>('theme');
 const panelPosition = $<HTMLSelectElement>('panel-position');
 
-const refreshModelsBtn = $<HTMLButtonElement>('refresh-models-btn');
-
+// Actions
 const validateBtn = $<HTMLButtonElement>('validate-btn');
 const validateStatus = $<HTMLSpanElement>('validate-status');
-
 const saveBtn = $<HTMLButtonElement>('save-btn');
 const saveStatus = $<HTMLSpanElement>('save-status');
 
+// ── Types ───────────────────────────────────────────────────────────
+
+/** Encoded model value: "providerType::modelId" */
+const MODEL_SEP = '::';
+type ModelEntry = { provider: ProviderConfig['type']; id: string; name: string };
+
+function encodeModelValue(provider: ProviderConfig['type'], modelId: string): string {
+  return `${provider}${MODEL_SEP}${modelId}`;
+}
+
+function decodeModelValue(value: string): { provider: ProviderConfig['type']; model: string } | null {
+  const idx = value.indexOf(MODEL_SEP);
+  if (idx < 0) return null;
+  return {
+    provider: value.slice(0, idx) as ProviderConfig['type'],
+    model: value.slice(idx + MODEL_SEP.length),
+  };
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────
-
-function getSelectedProvider(): ProviderConfig['type'] {
-  for (const radio of providerRadios) {
-    if (radio.checked) return radio.value as ProviderConfig['type'];
-  }
-  return 'github-models';
-}
-
-function showProviderPanel(type: ProviderConfig['type']): void {
-  githubSettings.hidden = type !== 'github-models';
-  anthropicSettings.hidden = type !== 'anthropic';
-  openaiSettings.hidden = type !== 'openai-compatible';
-}
 
 function showStatus(
   el: HTMLSpanElement,
@@ -74,88 +79,112 @@ function showStatus(
   }
 }
 
-// ── Dynamic model loading ───────────────────────────────────────────
+// ── Unified model dropdown ──────────────────────────────────────────
 
-type ModelInfo = { id: string; name: string; publisher: string };
+/** Cached GitHub catalog models for the current token. */
+let cachedGithubModels: ModelEntry[] | null = null;
 
-function populateModelSelect(
-  models: readonly ModelInfo[],
-  selectedId?: string,
-): void {
-  githubModel.innerHTML = '';
-
-  // Group by publisher
-  const grouped = new Map<string, ModelInfo[]>();
-  for (const m of models) {
-    const list = grouped.get(m.publisher) ?? [];
-    list.push(m);
-    grouped.set(m.publisher, list);
-  }
-
-  // Sort publishers alphabetically, then models by name within each group
-  const publishers = [...grouped.keys()].sort();
-
-  if (publishers.length <= 1) {
-    // Flat list when there is only one publisher
-    const list = publishers.length === 1 ? grouped.get(publishers[0])! : [];
-    for (const m of list.sort((a, b) => a.name.localeCompare(b.name))) {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = `${m.name} (${m.publisher})`;
-      githubModel.appendChild(opt);
-    }
-  } else {
-    for (const pub of publishers) {
-      const group = document.createElement('optgroup');
-      group.label = pub;
-      for (const m of grouped.get(pub)!.sort((a, b) => a.name.localeCompare(b.name))) {
-        const opt = document.createElement('option');
-        opt.value = m.id;
-        opt.textContent = m.name;
-        group.appendChild(opt);
-      }
-      githubModel.appendChild(group);
-    }
-  }
-
-  if (selectedId) {
-    githubModel.value = selectedId;
-  }
-}
-
-async function loadModels(selectedId?: string): Promise<void> {
-  githubModel.disabled = true;
-  refreshModelsBtn.disabled = true;
-  githubModel.innerHTML = '<option value="">Loading models…</option>';
-
-  const token = githubToken.value.trim() || undefined;
+async function fetchGithubModels(): Promise<ModelEntry[]> {
+  const token = githubToken.value.trim();
+  if (!token) return [];
 
   try {
-    const result = await new Promise<{ models: ModelInfo[]; error?: string }>(
+    const result = await new Promise<{ models: Array<{ id: string; name: string; publisher: string }>; error?: string }>(
       (resolve, reject) => {
         chrome.runtime.sendMessage(
           { type: 'FETCH_MODELS', payload: { token } },
           (response) => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(chrome.runtime.lastError.message));
-            } else {
-              resolve(response);
-            }
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+            else resolve(response);
           },
         );
       },
     );
 
-    populateModelSelect(
-      result.models.length > 0 ? result.models : FALLBACK_GITHUB_MODELS,
-      selectedId,
-    );
+    const models = result.models.length > 0 ? result.models : [...FALLBACK_GITHUB_MODELS];
+    return models.map((m) => ({
+      provider: 'github-models' as const,
+      id: m.id,
+      name: `${m.name} (${m.publisher})`,
+    }));
   } catch {
-    populateModelSelect(FALLBACK_GITHUB_MODELS, selectedId);
-  } finally {
-    githubModel.disabled = false;
-    refreshModelsBtn.disabled = false;
+    return [...FALLBACK_GITHUB_MODELS].map((m) => ({
+      provider: 'github-models' as const,
+      id: m.id,
+      name: `${m.name} (${m.publisher})`,
+    }));
   }
+}
+
+function getAnthropicModels(): ModelEntry[] {
+  if (!anthropicKey.value.trim()) return [];
+  return ANTHROPIC_MODELS.map((m) => ({
+    provider: 'anthropic' as const,
+    id: m.id,
+    name: m.name,
+  }));
+}
+
+function getCustomModels(): ModelEntry[] {
+  const url = openaiUrl.value.trim();
+  const model = openaiModel.value.trim();
+  if (!url || !model) return [];
+  return [{
+    provider: 'openai-compatible' as const,
+    id: model,
+    name: model,
+  }];
+}
+
+async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
+  const previous = preserveSelection ?? unifiedModel.value;
+
+  unifiedModel.disabled = true;
+  refreshModelsBtn.disabled = true;
+  unifiedModel.innerHTML = '<option value="">Loading models…</option>';
+
+  // Fetch all provider models in parallel
+  const [githubModels, anthropicModels, customModels] = await Promise.all([
+    githubToken.value.trim() ? fetchGithubModels() : Promise.resolve([]),
+    Promise.resolve(getAnthropicModels()),
+    Promise.resolve(getCustomModels()),
+  ]);
+  cachedGithubModels = githubModels;
+
+  unifiedModel.innerHTML = '';
+
+  const groups: Array<{ label: string; models: ModelEntry[] }> = [];
+  if (githubModels.length > 0) groups.push({ label: 'GitHub Models', models: githubModels });
+  if (anthropicModels.length > 0) groups.push({ label: 'Anthropic (Claude)', models: anthropicModels });
+  if (customModels.length > 0) groups.push({ label: 'Custom Endpoint', models: customModels });
+
+  if (groups.length === 0) {
+    unifiedModel.innerHTML = '<option value="">Configure a provider above…</option>';
+    unifiedModel.disabled = false;
+    refreshModelsBtn.disabled = false;
+    return;
+  }
+
+  for (const group of groups) {
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = group.label;
+    for (const m of group.models) {
+      const opt = document.createElement('option');
+      opt.value = encodeModelValue(m.provider, m.id);
+      opt.textContent = m.name;
+      optgroup.appendChild(opt);
+    }
+    unifiedModel.appendChild(optgroup);
+  }
+
+  // Restore previous selection if it still exists
+  if (previous) {
+    const exists = Array.from(unifiedModel.options).some((o) => o.value === previous);
+    if (exists) unifiedModel.value = previous;
+  }
+
+  unifiedModel.disabled = false;
+  refreshModelsBtn.disabled = false;
 }
 
 // ── Populate form from stored config ────────────────────────────────
@@ -163,24 +192,31 @@ async function loadModels(selectedId?: string): Promise<void> {
 async function loadSettings(): Promise<void> {
   const config = await getConfig();
 
-  // Provider type
-  for (const radio of providerRadios) {
-    radio.checked = radio.value === config.provider.type;
-  }
-  showProviderPanel(config.provider.type);
-
-  // GitHub Models
+  // Credentials
   githubToken.value = config.provider.githubModels?.token ?? '';
-  await loadModels(config.provider.githubModels?.model ?? 'openai/gpt-4.1');
-
-  // OpenAI-compatible
+  anthropicKey.value = config.provider.anthropic?.apiKey ?? '';
   openaiUrl.value = config.provider.openaiCompatible?.baseUrl ?? '';
   openaiKey.value = config.provider.openaiCompatible?.apiKey ?? '';
   openaiModel.value = config.provider.openaiCompatible?.model ?? '';
 
-  // Anthropic
-  anthropicKey.value = config.provider.anthropic?.apiKey ?? '';
-  anthropicModel.value = config.provider.anthropic?.model ?? 'claude-sonnet-4-6';
+  // Open details sections that have credentials
+  if (githubToken.value) githubDetails.open = true;
+  if (anthropicKey.value) anthropicDetails.open = true;
+  if (openaiUrl.value) openaiDetails.open = true;
+
+  // Determine the currently-selected model value
+  const activeType = config.provider.type;
+  let activeModel = '';
+  if (activeType === 'github-models') {
+    activeModel = config.provider.githubModels?.model ?? 'openai/gpt-4.1';
+  } else if (activeType === 'anthropic') {
+    activeModel = config.provider.anthropic?.model ?? 'claude-sonnet-4-6';
+  } else if (activeType === 'openai-compatible') {
+    activeModel = config.provider.openaiCompatible?.model ?? '';
+  }
+  const selectedValue = encodeModelValue(activeType, activeModel);
+
+  await rebuildModelDropdown(selectedValue);
 
   // Analysis
   explanationLanguage.value = config.analysis.explanationLanguage;
@@ -194,22 +230,24 @@ async function loadSettings(): Promise<void> {
 // ── Gather form values into a config object ─────────────────────────
 
 function gatherConfig(): ExtensionConfig {
-  const providerType = getSelectedProvider();
+  const decoded = decodeModelValue(unifiedModel.value);
+  const providerType: ProviderConfig['type'] = decoded?.provider ?? 'github-models';
+  const modelId = decoded?.model ?? '';
 
   const provider: ProviderConfig = {
     type: providerType,
     githubModels: {
       token: githubToken.value.trim(),
-      model: githubModel.value,
+      model: providerType === 'github-models' ? modelId : '',
     },
     openaiCompatible: {
       baseUrl: openaiUrl.value.trim(),
       apiKey: openaiKey.value.trim(),
-      model: openaiModel.value.trim(),
+      model: providerType === 'openai-compatible' ? modelId : openaiModel.value.trim(),
     },
     anthropic: {
       apiKey: anthropicKey.value.trim(),
-      model: anthropicModel.value,
+      model: providerType === 'anthropic' ? modelId : '',
     },
   };
 
@@ -228,27 +266,26 @@ function gatherConfig(): ExtensionConfig {
 
 // ── Event handlers ──────────────────────────────────────────────────
 
-for (const radio of providerRadios) {
-  radio.addEventListener('change', () => {
-    showProviderPanel(getSelectedProvider());
-  });
+// Rebuild model dropdown when credentials change (debounced)
+let credentialDebounce: ReturnType<typeof setTimeout> | undefined;
+function onCredentialChange(): void {
+  clearTimeout(credentialDebounce);
+  credentialDebounce = setTimeout(() => {
+    rebuildModelDropdown();
+  }, 600);
 }
 
-refreshModelsBtn.addEventListener('click', () => {
-  loadModels(githubModel.value);
-});
+githubToken.addEventListener('input', onCredentialChange);
+anthropicKey.addEventListener('input', onCredentialChange);
+openaiUrl.addEventListener('input', onCredentialChange);
+openaiModel.addEventListener('input', onCredentialChange);
 
-// Reload model list when the token changes (debounced)
-let tokenDebounce: ReturnType<typeof setTimeout> | undefined;
-githubToken.addEventListener('input', () => {
-  clearTimeout(tokenDebounce);
-  tokenDebounce = setTimeout(() => {
-    loadModels(githubModel.value);
-  }, 800);
+refreshModelsBtn.addEventListener('click', () => {
+  cachedGithubModels = null;
+  rebuildModelDropdown();
 });
 
 validateBtn.addEventListener('click', async () => {
-  // Save current values first so the background reads the latest config
   const config = gatherConfig();
   try {
     await setConfig(config);
