@@ -9,6 +9,8 @@ export interface GitHubModel {
   publisher: string;
   capabilities: string[];
   rateLimitTier: string;
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
 }
 
 export class GitHubModelsProvider implements ILLMProvider {
@@ -121,6 +123,13 @@ export class GitHubModelsProvider implements ILLMProvider {
     return body;
   }
 
+  /**
+   * Minimum output token capacity for a model to be usable for grammar
+   * analysis.  Our brief prompt needs ~500 input tokens and we need at least
+   * a few hundred output tokens, so 1 000 output tokens is a safe floor.
+   */
+  private static readonly MIN_OUTPUT_TOKENS = 1_000;
+
   static async fetchAvailableModels(token: string): Promise<GitHubModel[]> {
     const res = await fetch('https://models.github.ai/catalog/models', {
       headers: {
@@ -131,17 +140,28 @@ export class GitHubModelsProvider implements ILLMProvider {
     if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
     const models = await res.json();
     return models
-      .filter(
-        (m: any) =>
-          m.supported_input_modalities?.includes('text') &&
-          m.supported_output_modalities?.includes('text'),
-      )
+      .filter((m: any) => {
+        if (
+          !m.supported_input_modalities?.includes('text') ||
+          !m.supported_output_modalities?.includes('text')
+        ) {
+          return false;
+        }
+        // Drop models whose output window is too small for grammar analysis
+        const maxOut = m.limits?.max_output_tokens;
+        if (typeof maxOut === 'number' && maxOut < this.MIN_OUTPUT_TOKENS) {
+          return false;
+        }
+        return true;
+      })
       .map((m: any) => ({
         id: m.id,
         name: m.name,
         publisher: m.publisher,
         capabilities: m.capabilities ?? [],
         rateLimitTier: m.rate_limit_tier ?? 'unknown',
+        maxInputTokens: m.limits?.max_input_tokens as number | undefined,
+        maxOutputTokens: m.limits?.max_output_tokens as number | undefined,
       }));
   }
 
