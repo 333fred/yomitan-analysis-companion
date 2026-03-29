@@ -10,7 +10,6 @@ export const GITHUB_MODELS_ENDPOINT =
 export const FALLBACK_GITHUB_MODELS = [
   { id: 'openai/gpt-4.1', name: 'GPT-4.1', publisher: 'openai' },
   { id: 'openai/gpt-4.1-mini', name: 'GPT-4.1 Mini', publisher: 'openai' },
-  { id: 'openai/gpt-4.1-nano', name: 'GPT-4.1 Nano', publisher: 'openai' },
   { id: 'openai/gpt-4o', name: 'GPT-4o', publisher: 'openai' },
   { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', publisher: 'openai' },
 ] as const;

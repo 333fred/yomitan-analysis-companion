@@ -124,11 +124,12 @@ export class GitHubModelsProvider implements ILLMProvider {
   }
 
   /**
-   * Minimum output token capacity for a model to be usable for grammar
-   * analysis.  Our brief prompt needs ~500 input tokens and we need at least
-   * a few hundred output tokens, so 1 000 output tokens is a safe floor.
+   * Minimum token capacities for a model to be usable for grammar analysis.
+   * Our prompt is ~500-700 input tokens and we need at least ~800 output
+   * tokens for a useful response.
    */
-  private static readonly MIN_OUTPUT_TOKENS = 1_000;
+  private static readonly MIN_OUTPUT_TOKENS = 2_000;
+  private static readonly MIN_INPUT_TOKENS = 4_000;
 
   static async fetchAvailableModels(token: string): Promise<GitHubModel[]> {
     const res = await fetch('https://models.github.ai/catalog/models', {
@@ -147,9 +148,18 @@ export class GitHubModelsProvider implements ILLMProvider {
         ) {
           return false;
         }
-        // Drop models whose output window is too small for grammar analysis
+        const maxIn = m.limits?.max_input_tokens;
         const maxOut = m.limits?.max_output_tokens;
+        // Drop models whose context or output window is too small
         if (typeof maxOut === 'number' && maxOut < this.MIN_OUTPUT_TOKENS) {
+          return false;
+        }
+        if (typeof maxIn === 'number' && maxIn < this.MIN_INPUT_TOKENS) {
+          return false;
+        }
+        // Also reject by name pattern for "nano" tier models that may lack
+        // limits metadata but are consistently too small.
+        if (/\bnano\b/i.test(m.name ?? '')) {
           return false;
         }
         return true;
