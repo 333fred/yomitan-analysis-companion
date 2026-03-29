@@ -162,19 +162,17 @@ export class YomitanObserver {
 
     const container = this.trackedContainer;
 
-    // Fast path: if already visible, verify the popup is still there
+    // Fast path: if already visible, verify it's still there without
+    // re-probing bounds (probing varies by ±EDGE_STEP_PX per cycle,
+    // which would cause the button to jitter side-to-side).
     if (this.popupVisible && this.lastRect) {
       const cx = this.lastRect.x + this.lastRect.width / 2;
       const cy = this.lastRect.y + this.lastRect.height / 2;
       if (this.inViewport(cx, cy) && document.elementFromPoint(cx, cy) === container) {
         this.cancelHideTimer();
-        const rect = this.probePopupBounds(cx, cy);
-        if (this.hasRectChanged(rect)) {
-          this.lastRect = rect;
-          this.emit({ type: 'repositioned', rect, container });
-        }
-        return;
+        return; // still there, no need to re-probe
       }
+      // Center miss — popup may have moved; fall through to search
     }
 
     // Search near the mouse cursor (where Yomitan typically shows)

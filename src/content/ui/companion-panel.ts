@@ -26,13 +26,21 @@ export class CompanionPanel {
   position(popupRect: DOMRect, buttonRect: DOMRect): void {
     if (!this.container) return;
 
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 4;
+
     const width = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, popupRect.width + 20));
     const left = popupRect.left + (popupRect.width - width) / 2;
-    const top = buttonRect.bottom + 4;
+    const top = buttonRect.bottom + gap;
 
     this.container.style.width = `${width}px`;
-    this.container.style.left = `${Math.max(4, left)}px`;
+    this.container.style.left = `${Math.max(gap, Math.min(left, vw - width - gap))}px`;
     this.container.style.top = `${top}px`;
+
+    // Shrink max-height so the panel doesn't extend below the viewport
+    const available = vh - top - gap;
+    this.container.style.maxHeight = `${Math.max(150, Math.min(400, available))}px`;
   }
 
   show(): void {

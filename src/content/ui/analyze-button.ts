@@ -1,3 +1,7 @@
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
 export class AnalyzeButton {
   private element: HTMLButtonElement | null = null;
   private clickHandler: (() => void) | null = null;
@@ -19,12 +23,38 @@ export class AnalyzeButton {
   position(popupRect: DOMRect): void {
     if (!this.element) return;
 
-    const btnWidth = this.element.offsetWidth || 100;
-    const left = popupRect.left + (popupRect.width - btnWidth) / 2;
-    const top = popupRect.bottom + 4;
+    const btnW = this.element.offsetWidth || 100;
+    const btnH = this.element.offsetHeight || 32;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 4;
 
-    this.element.style.left = `${Math.max(4, left)}px`;
-    this.element.style.top = `${top}px`;
+    // Preferred: centered below the popup
+    if (popupRect.bottom + gap + btnH <= vh) {
+      const left = popupRect.left + (popupRect.width - btnW) / 2;
+      this.element.style.left = `${clamp(left, gap, vw - btnW - gap)}px`;
+      this.element.style.top = `${popupRect.bottom + gap}px`;
+      return;
+    }
+
+    // Fallback: to the right of the popup, vertically centered
+    if (popupRect.right + gap + btnW <= vw) {
+      this.element.style.left = `${popupRect.right + gap}px`;
+      this.element.style.top = `${clamp(popupRect.top + (popupRect.height - btnH) / 2, gap, vh - btnH - gap)}px`;
+      return;
+    }
+
+    // Fallback: to the left of the popup
+    if (popupRect.left - gap - btnW >= 0) {
+      this.element.style.left = `${popupRect.left - gap - btnW}px`;
+      this.element.style.top = `${clamp(popupRect.top + (popupRect.height - btnH) / 2, gap, vh - btnH - gap)}px`;
+      return;
+    }
+
+    // Last resort: above the popup, centered
+    const left = popupRect.left + (popupRect.width - btnW) / 2;
+    this.element.style.left = `${clamp(left, gap, vw - btnW - gap)}px`;
+    this.element.style.top = `${Math.max(gap, popupRect.top - gap - btnH)}px`;
   }
 
   show(): void {
