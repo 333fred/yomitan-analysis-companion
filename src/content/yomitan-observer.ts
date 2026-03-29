@@ -6,30 +6,44 @@ export interface YomitanPopupEvent {
 
 export type YomitanPopupListener = (event: YomitanPopupEvent) => void;
 
-const POSITION_POLL_INTERVAL_MS = 200;
+/** How often to probe for popup visibility (ms). */
+const PROBE_INTERVAL_MS = 200;
+/** Grace period before declaring the popup hidden (ms). */
+const HIDE_DELAY_MS = 500;
+/** Pixel step when probing for popup edges. */
+const EDGE_STEP_PX = 20;
+/** Tolerance for considering two rects the same position (px). */
+const RECT_TOLERANCE_PX = 5;
+/** Minimum dimension to accept a probed rect as a valid popup (px). */
+const MIN_POPUP_SIZE_PX = 30;
 
-/** Minimum dimension (px) to consider the popup actually visible. */
-const MIN_VISIBLE_SIZE = 10;
+const LOG = '[YomitanCompanion:Observer]';
 
 /**
- * Detects Yomitan's popup container in the DOM.
+ * Detects Yomitan's popup by probing the viewport with `elementFromPoint`.
  *
- * Yomitan injects a <div> with a closed shadow root containing an iframe.
- * The container stays in the DOM persistently — the popup is "hidden" when
- * the iframe inside is sized to 0×0. Since the shadow DOM is closed we
- * identify the host by its `all: initial !important` style and track
- * visibility via bounding-rect dimensions.
+ * Yomitan renders its popup iframe inside a **closed** Shadow DOM. The
+ * shadow host (`<div style="all:initial!important">`) is always 0×0 in
+ * layout because the iframe uses `position:fixed`. We therefore cannot
+ * rely on the host element's bounding rect.
+ *
+ * Instead we leverage the Shadow DOM hit-testing spec: `elementFromPoint`
+ * at the iframe's visual location returns the shadow host (because the
+ * shadow is closed). By probing points near the mouse cursor we can
+ * detect AND measure the popup without accessing the closed shadow.
  */
 export class YomitanObserver {
   private bodyObserver: MutationObserver | null = null;
   private listeners: YomitanPopupListener[] = [];
-  /** The Yomitan shadow-host div (persists in DOM even when popup is hidden) */
   private trackedContainer: HTMLElement | null = null;
-  /** Whether we consider the popup currently visible */
   private popupVisible = false;
-  private resizeObserver: ResizeObserver | null = null;
-  private positionCheckInterval: number | null = null;
   private lastRect: DOMRect | null = null;
+
+  private mouseX = 0;
+  private mouseY = 0;
+  private mouseMoveHandler: ((e: MouseEvent) => void) | null = null;
+  private probeTimer: number | null = null;
+  private hideTimer: number | null = null;
 
   start(): void {
     if (this.bodyObserver) return;
@@ -45,21 +59,28 @@ export class YomitanObserver {
         }
         for (const node of mutation.removedNodes) {
           if (node === this.trackedContainer) {
-            if (this.popupVisible) {
-              this.onPopupHidden();
-            }
+            if (this.popupVisible) this.onPopupHidden();
             this.untrackContainer();
           }
         }
       }
     });
-
     this.bodyObserver.observe(document.body, { childList: true });
+
+    this.mouseMoveHandler = (e: MouseEvent) => {
+      this.mouseX = e.clientX;
+      this.mouseY = e.clientY;
+    };
+    document.addEventListener('mousemove', this.mouseMoveHandler, { passive: true });
   }
 
   stop(): void {
     this.bodyObserver?.disconnect();
     this.bodyObserver = null;
+    if (this.mouseMoveHandler) {
+      document.removeEventListener('mousemove', this.mouseMoveHandler);
+      this.mouseMoveHandler = null;
+    }
     this.untrackContainer();
   }
 
@@ -73,8 +94,7 @@ export class YomitanObserver {
   }
 
   getCurrentPopupRect(): DOMRect | null {
-    if (!this.trackedContainer || !this.popupVisible) return null;
-    return this.trackedContainer.getBoundingClientRect();
+    return this.popupVisible ? this.lastRect : null;
   }
 
   isPopupVisible(): boolean {
@@ -98,116 +118,166 @@ export class YomitanObserver {
    */
   private isYomitanContainer(el: HTMLElement): boolean {
     if (el.tagName !== 'DIV') return false;
-    const allValue = el.style.getPropertyValue('all');
-    const allPriority = el.style.getPropertyPriority('all');
-    return allValue === 'initial' && allPriority === 'important';
+    return (
+      el.style.getPropertyValue('all') === 'initial' &&
+      el.style.getPropertyPriority('all') === 'important'
+    );
   }
 
-  private isRectVisible(rect: DOMRect): boolean {
-    return rect.width >= MIN_VISIBLE_SIZE && rect.height >= MIN_VISIBLE_SIZE;
-  }
-
-  /**
-   * Start tracking a Yomitan container. We observe it continuously
-   * since Yomitan keeps the element in the DOM and toggles the iframe
-   * size inside the closed shadow root to show/hide the popup.
-   */
   private trackContainer(container: HTMLElement): void {
     if (this.trackedContainer === container) return;
-
-    // Clean up any previous tracking
-    if (this.trackedContainer) {
-      this.untrackContainer();
-    }
-
+    if (this.trackedContainer) this.untrackContainer();
     this.trackedContainer = container;
-    this.startPositionTracking();
-
-    // Check if it's already visible
-    const rect = container.getBoundingClientRect();
-    if (this.isRectVisible(rect)) {
-      this.onPopupShown(rect, container);
-    }
+    console.debug(LOG, 'Yomitan container detected — starting popup probing');
+    this.probeTimer = window.setInterval(() => this.probeForPopup(), PROBE_INTERVAL_MS);
   }
 
   private untrackContainer(): void {
-    this.stopPositionTracking();
+    if (this.probeTimer !== null) {
+      clearInterval(this.probeTimer);
+      this.probeTimer = null;
+    }
+    this.cancelHideTimer();
     this.trackedContainer = null;
     this.popupVisible = false;
     this.lastRect = null;
   }
 
-  private onPopupShown(rect: DOMRect, container: HTMLElement): void {
-    this.popupVisible = true;
-    this.lastRect = rect;
-    this.emit({ type: 'shown', rect, container });
+  private cancelHideTimer(): void {
+    if (this.hideTimer !== null) {
+      clearTimeout(this.hideTimer);
+      this.hideTimer = null;
+    }
   }
 
-  private onPopupHidden(): void {
-    this.popupVisible = false;
-    this.lastRect = null;
-    this.emit({ type: 'hidden' });
-  }
+  // ── Core probing loop ────────────────────────────────────────────────
 
-  private startPositionTracking(): void {
+  private probeForPopup(): void {
     if (!this.trackedContainer) return;
-
-    this.resizeObserver = new ResizeObserver(() => {
-      this.checkVisibilityChange();
-    });
-    this.resizeObserver.observe(this.trackedContainer);
-
-    this.positionCheckInterval = window.setInterval(() => {
-      this.checkVisibilityChange();
-    }, POSITION_POLL_INTERVAL_MS);
-  }
-
-  /**
-   * Core polling check. Detects show/hide/reposition by comparing the
-   * container's bounding rect to our last known state.
-   */
-  private checkVisibilityChange(): void {
-    if (!this.trackedContainer) return;
-
     if (!this.trackedContainer.isConnected) {
       if (this.popupVisible) this.onPopupHidden();
       this.untrackContainer();
       return;
     }
 
-    const rect = this.trackedContainer.getBoundingClientRect();
-    const visible = this.isRectVisible(rect);
+    const container = this.trackedContainer;
 
-    if (visible && !this.popupVisible) {
-      // Popup just appeared
-      this.onPopupShown(rect, this.trackedContainer);
-    } else if (!visible && this.popupVisible) {
-      // Popup just disappeared
-      this.onPopupHidden();
-    } else if (visible && this.popupVisible && this.hasRectChanged(rect)) {
-      // Popup moved or resized
-      this.lastRect = rect;
-      this.emit({ type: 'repositioned', rect, container: this.trackedContainer });
+    // Fast path: if already visible, verify the popup is still there
+    if (this.popupVisible && this.lastRect) {
+      const cx = this.lastRect.x + this.lastRect.width / 2;
+      const cy = this.lastRect.y + this.lastRect.height / 2;
+      if (this.inViewport(cx, cy) && document.elementFromPoint(cx, cy) === container) {
+        this.cancelHideTimer();
+        const rect = this.probePopupBounds(cx, cy);
+        if (this.hasRectChanged(rect)) {
+          this.lastRect = rect;
+          this.emit({ type: 'repositioned', rect, container });
+        }
+        return;
+      }
+    }
+
+    // Search near the mouse cursor (where Yomitan typically shows)
+    const hit = this.findPopupHitPoint(container);
+    if (hit) {
+      this.cancelHideTimer();
+      const rect = this.probePopupBounds(hit[0], hit[1]);
+      if (rect.width >= MIN_POPUP_SIZE_PX && rect.height >= MIN_POPUP_SIZE_PX) {
+        if (!this.popupVisible) {
+          this.onPopupShown(rect, container);
+        } else if (this.hasRectChanged(rect)) {
+          this.lastRect = rect;
+          this.emit({ type: 'repositioned', rect, container });
+        }
+        return;
+      }
+    }
+
+    // Not found — schedule hide
+    if (this.popupVisible && this.hideTimer === null) {
+      this.hideTimer = window.setTimeout(() => {
+        this.onPopupHidden();
+        this.hideTimer = null;
+      }, HIDE_DELAY_MS);
     }
   }
 
-  private stopPositionTracking(): void {
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
+  /**
+   * Probe points in a fan around the mouse to find the Yomitan popup.
+   * Returns the first viewport coordinate that hits the container.
+   */
+  private findPopupHitPoint(container: HTMLElement): [number, number] | null {
+    const mx = this.mouseX;
+    const my = this.mouseY;
 
-    if (this.positionCheckInterval !== null) {
-      window.clearInterval(this.positionCheckInterval);
-      this.positionCheckInterval = null;
+    const offsets: [number, number][] = [
+      [0, 0],
+      // Below mouse (most common Yomitan position)
+      [0, 30], [0, 70], [0, 120], [0, 180], [0, 250],
+      [60, 50], [-60, 50], [60, 120], [-60, 120],
+      // Above mouse (when popup flips upward near viewport bottom)
+      [0, -30], [0, -80], [0, -150], [0, -220],
+      [100, 0], [-100, 0],
+    ];
+
+    for (const [dx, dy] of offsets) {
+      const px = mx + dx;
+      const py = my + dy;
+      if (!this.inViewport(px, py)) continue;
+      if (document.elementFromPoint(px, py) === container) return [px, py];
     }
+
+    return null;
+  }
+
+  /**
+   * From a known hit point, walk outward to approximate the popup edges.
+   */
+  private probePopupBounds(hitX: number, hitY: number): DOMRect {
+    const c = this.trackedContainer;
+    const s = EDGE_STEP_PX;
+
+    let top = hitY;
+    let bottom = hitY;
+    let left = hitX;
+    let right = hitX;
+
+    while (top - s >= 0 && document.elementFromPoint(hitX, top - s) === c) top -= s;
+    while (bottom + s < window.innerHeight && document.elementFromPoint(hitX, bottom + s) === c) bottom += s;
+    while (left - s >= 0 && document.elementFromPoint(left - s, hitY) === c) left -= s;
+    while (right + s < window.innerWidth && document.elementFromPoint(right + s, hitY) === c) right += s;
+
+    return new DOMRect(left, top, right - left, bottom - top);
+  }
+
+  private inViewport(x: number, y: number): boolean {
+    return x >= 0 && y >= 0 && x < window.innerWidth && y < window.innerHeight;
+  }
+
+  // ── State transitions ────────────────────────────────────────────────
+
+  private onPopupShown(rect: DOMRect, container: HTMLElement): void {
+    this.popupVisible = true;
+    this.lastRect = rect;
+    console.debug(LOG, 'Popup detected', { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) });
+    this.emit({ type: 'shown', rect, container });
+  }
+
+  private onPopupHidden(): void {
+    this.popupVisible = false;
+    this.lastRect = null;
+    console.debug(LOG, 'Popup hidden');
+    this.emit({ type: 'hidden' });
   }
 
   private hasRectChanged(newRect: DOMRect): boolean {
     if (!this.lastRect) return true;
+    const t = RECT_TOLERANCE_PX;
     return (
-      this.lastRect.x !== newRect.x ||
-      this.lastRect.y !== newRect.y ||
-      this.lastRect.width !== newRect.width ||
-      this.lastRect.height !== newRect.height
+      Math.abs(this.lastRect.x - newRect.x) > t ||
+      Math.abs(this.lastRect.y - newRect.y) > t ||
+      Math.abs(this.lastRect.width - newRect.width) > t ||
+      Math.abs(this.lastRect.height - newRect.height) > t
     );
   }
 
@@ -216,7 +286,7 @@ export class YomitanObserver {
       try {
         listener(event);
       } catch (err) {
-        console.error('[YomitanCompanion] Listener error:', err);
+        console.error(LOG, 'Listener error:', err);
       }
     }
   }

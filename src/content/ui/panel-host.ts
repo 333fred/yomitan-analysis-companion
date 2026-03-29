@@ -26,7 +26,8 @@ export class PanelHost {
 
     const host = document.createElement('div');
     host.id = HOST_ID;
-    host.style.position = 'absolute';
+    // Fixed positioning so viewport coords from getBoundingClientRect work directly
+    host.style.position = 'fixed';
     host.style.top = '0';
     host.style.left = '0';
     host.style.width = '0';
@@ -44,13 +45,6 @@ export class PanelHost {
     this.styleElement.textContent = getStyles(this.theme);
     this.shadowRoot.appendChild(this.styleElement);
 
-    // Create a wrapper that re-enables pointer events for our UI elements
-    const uiRoot = document.createElement('div');
-    uiRoot.style.pointerEvents = 'auto';
-    this.shadowRoot.appendChild(uiRoot);
-
-    // Create child components inside a sub-shadow isn't needed — we use the
-    // main shadow root directly so styles apply naturally.
     this.button.create(this.shadowRoot);
     this.panel.create(this.shadowRoot);
   }

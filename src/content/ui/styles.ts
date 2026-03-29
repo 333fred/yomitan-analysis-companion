@@ -83,6 +83,7 @@ export function getStyles(theme: 'light' | 'dark'): string {
   user-select: none;
   position: absolute;
   z-index: 2147483646;
+  pointer-events: auto;
 }
 
 .ycc-button:hover:not(:disabled) {
@@ -124,6 +125,7 @@ export function getStyles(theme: 'light' | 'dark'): string {
 .ycc-panel {
   position: absolute;
   z-index: 2147483646;
+  pointer-events: auto;
   background: var(--ycc-bg);
   border: 1px solid var(--ycc-border);
   border-radius: 10px;
