@@ -157,6 +157,35 @@ export function getStyles(theme: 'light' | 'dark'): string {
   transform: translate(0, 0);
 }
 
+/* ── Resize Handle ── */
+.ycc-resize-handle {
+  position: absolute;
+  z-index: 1;
+  flex-shrink: 0;
+}
+
+.ycc-resize-handle--right {
+  top: 0;
+  left: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+}
+
+.ycc-resize-handle--bottom {
+  top: -3px;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  cursor: row-resize;
+}
+
+.ycc-resize-handle:hover,
+.ycc-resize-handle:active {
+  background: var(--ycc-accent);
+  opacity: 0.3;
+}
+
 .ycc-side-panel-header {
   display: flex;
   align-items: center;

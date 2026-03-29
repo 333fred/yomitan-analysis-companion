@@ -1,8 +1,12 @@
 import { SectionRenderer } from './section-renderer';
 
 const SHIMMER_LINE_COUNT = 5;
-const RIGHT_PANEL_WIDTH = 380;
-const BOTTOM_PANEL_HEIGHT = 300;
+const DEFAULT_RIGHT_WIDTH = 380;
+const DEFAULT_BOTTOM_HEIGHT = 300;
+const MIN_RIGHT_WIDTH = 280;
+const MAX_RIGHT_WIDTH = 800;
+const MIN_BOTTOM_HEIGHT = 150;
+const MAX_BOTTOM_HEIGHT = 600;
 
 export type PanelPosition = 'right' | 'bottom';
 
@@ -25,6 +29,14 @@ export class CompanionPanel {
   private onModelChangeCallback: ((encodedValue: string) => void) | null = null;
   private onMakeDefaultCallback: ((encodedValue: string) => void) | null = null;
   private defaultModelValue = '';
+  private panelWidth = DEFAULT_RIGHT_WIDTH;
+  private panelHeight = DEFAULT_BOTTOM_HEIGHT;
+  private resizeHandle: HTMLDivElement | null = null;
+  private isDragging = false;
+  private dragStartPointer = 0;
+  private dragStartSize = 0;
+  private boundOnPointerMove: ((e: PointerEvent) => void) | null = null;
+  private boundOnPointerUp: ((e: PointerEvent) => void) | null = null;
 
   constructor() {
     this.sectionRenderer = new SectionRenderer();
@@ -35,6 +47,13 @@ export class CompanionPanel {
 
     const panel = document.createElement('div');
     panel.className = `ycc-side-panel ycc-side-panel--${this.position}`;
+
+    // Resize handle
+    const handle = document.createElement('div');
+    handle.className = `ycc-resize-handle ycc-resize-handle--${this.position}`;
+    handle.addEventListener('pointerdown', (e) => this.onResizeStart(e));
+    panel.appendChild(handle);
+    this.resizeHandle = handle;
 
     // Header
     const header = document.createElement('div');
@@ -110,7 +129,10 @@ export class CompanionPanel {
     this.position = pos;
     if (this.container) {
       this.container.className = `ycc-side-panel ycc-side-panel--${pos}`;
-      // If currently open, reapply page margin
+      if (this.resizeHandle) {
+        this.resizeHandle.className = `ycc-resize-handle ycc-resize-handle--${pos}`;
+      }
+      this.applySizeStyle();
       if (this.isOpen()) {
         this.applyPageMargin();
       }
@@ -139,6 +161,7 @@ export class CompanionPanel {
   }
 
   destroy(): void {
+    this.stopDrag();
     this.removePageMargin();
     this.container?.remove();
     this.container = null;
@@ -148,6 +171,7 @@ export class CompanionPanel {
     this.footerEl = null;
     this.modelSelect = null;
     this.makeDefaultBtn = null;
+    this.resizeHandle = null;
   }
 
   // ── Sentence display ────────────────────────────────────────────────
@@ -288,11 +312,90 @@ export class CompanionPanel {
     this.makeDefaultBtn.disabled = this.modelSelect.value === this.defaultModelValue;
   }
 
+  // ── Resize ──────────────────────────────────────────────────────────
+
+  private onResizeStart(e: PointerEvent): void {
+    if (!this.container) return;
+    e.preventDefault();
+    this.isDragging = true;
+
+    if (this.position === 'right') {
+      this.dragStartPointer = e.clientX;
+      this.dragStartSize = this.panelWidth;
+    } else {
+      this.dragStartPointer = e.clientY;
+      this.dragStartSize = this.panelHeight;
+    }
+
+    this.boundOnPointerMove = (ev) => this.onResizeMove(ev);
+    this.boundOnPointerUp = (ev) => this.onResizeEnd(ev);
+    document.addEventListener('pointermove', this.boundOnPointerMove);
+    document.addEventListener('pointerup', this.boundOnPointerUp);
+
+    // Disable panel transition and text selection during drag
+    this.container.style.transition = 'none';
+    document.body.style.userSelect = 'none';
+  }
+
+  private onResizeMove(e: PointerEvent): void {
+    if (!this.isDragging || !this.container) return;
+
+    if (this.position === 'right') {
+      // Dragging left edge: moving left increases width
+      const delta = this.dragStartPointer - e.clientX;
+      this.panelWidth = Math.round(
+        Math.max(MIN_RIGHT_WIDTH, Math.min(MAX_RIGHT_WIDTH, this.dragStartSize + delta)),
+      );
+      this.applySizeStyle();
+    } else {
+      // Dragging top edge: moving up increases height
+      const delta = this.dragStartPointer - e.clientY;
+      this.panelHeight = Math.round(
+        Math.max(MIN_BOTTOM_HEIGHT, Math.min(MAX_BOTTOM_HEIGHT, this.dragStartSize + delta)),
+      );
+      this.applySizeStyle();
+    }
+
+    this.applyPageMargin();
+  }
+
+  private onResizeEnd(_e: PointerEvent): void {
+    this.stopDrag();
+  }
+
+  private stopDrag(): void {
+    if (!this.isDragging) return;
+    this.isDragging = false;
+
+    if (this.boundOnPointerMove) {
+      document.removeEventListener('pointermove', this.boundOnPointerMove);
+      this.boundOnPointerMove = null;
+    }
+    if (this.boundOnPointerUp) {
+      document.removeEventListener('pointerup', this.boundOnPointerUp);
+      this.boundOnPointerUp = null;
+    }
+
+    document.body.style.userSelect = '';
+    if (this.container) {
+      this.container.style.transition = '';
+    }
+  }
+
+  private applySizeStyle(): void {
+    if (!this.container) return;
+    if (this.position === 'right') {
+      this.container.style.width = `${this.panelWidth}px`;
+    } else {
+      this.container.style.height = `${this.panelHeight}px`;
+    }
+  }
+
   private applyPageMargin(): void {
     if (this.position === 'right') {
-      document.documentElement.style.marginRight = `${RIGHT_PANEL_WIDTH}px`;
+      document.documentElement.style.marginRight = `${this.panelWidth}px`;
     } else {
-      document.documentElement.style.marginBottom = `${BOTTOM_PANEL_HEIGHT}px`;
+      document.documentElement.style.marginBottom = `${this.panelHeight}px`;
     }
   }
 
