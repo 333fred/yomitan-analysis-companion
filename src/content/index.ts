@@ -183,6 +183,8 @@ function onPagePointerDown(e: PointerEvent): void {
 function onPopupRepositioned(event: YomitanPopupEvent): void {
   if (!event.rect) return;
   panelHost.positionButton(event.rect);
+  // Re-capture sentence since the user may be hovering over a different word
+  preCapturedSentence = extractor.extractSentence();
 }
 
 function ensureMounted(): void {

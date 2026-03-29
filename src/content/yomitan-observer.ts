@@ -16,6 +16,8 @@ const EDGE_STEP_PX = 20;
 const RECT_TOLERANCE_PX = 5;
 /** Minimum dimension to accept a probed rect as a valid popup (px). */
 const MIN_POPUP_SIZE_PX = 30;
+/** Re-probe bounds if the mouse has moved this far since last probe (px). */
+const REPROBE_MOUSE_THRESHOLD_PX = 20;
 
 const LOG = '[YomitanCompanion:Observer]';
 
@@ -41,6 +43,8 @@ export class YomitanObserver {
 
   private mouseX = 0;
   private mouseY = 0;
+  private lastProbeMouseX = 0;
+  private lastProbeMouseY = 0;
   private mouseMoveHandler: ((e: MouseEvent) => void) | null = null;
   private probeTimer: number | null = null;
   private hideTimer: number | null = null;
@@ -141,6 +145,8 @@ export class YomitanObserver {
     this.trackedContainer = null;
     this.popupVisible = false;
     this.lastRect = null;
+    this.lastProbeMouseX = 0;
+    this.lastProbeMouseY = 0;
   }
 
   private cancelHideTimer(): void {
@@ -162,17 +168,25 @@ export class YomitanObserver {
 
     const container = this.trackedContainer;
 
-    // Fast path: if already visible, verify it's still there without
-    // re-probing bounds (probing varies by ±EDGE_STEP_PX per cycle,
-    // which would cause the button to jitter side-to-side).
+    // Fast path: if already visible AND the mouse hasn't moved far since the
+    // last probe, just verify the popup is still there at the cached center.
+    // This prevents jitter from re-probing the same popup position. When the
+    // mouse moves far enough (user hovering over a different word), we fall
+    // through to full re-probing to detect popup repositioning.
     if (this.popupVisible && this.lastRect) {
-      const cx = this.lastRect.x + this.lastRect.width / 2;
-      const cy = this.lastRect.y + this.lastRect.height / 2;
-      if (this.inViewport(cx, cy) && document.elementFromPoint(cx, cy) === container) {
-        this.cancelHideTimer();
-        return; // still there, no need to re-probe
+      const mouseMovedFar =
+        Math.abs(this.mouseX - this.lastProbeMouseX) > REPROBE_MOUSE_THRESHOLD_PX ||
+        Math.abs(this.mouseY - this.lastProbeMouseY) > REPROBE_MOUSE_THRESHOLD_PX;
+
+      if (!mouseMovedFar) {
+        const cx = this.lastRect.x + this.lastRect.width / 2;
+        const cy = this.lastRect.y + this.lastRect.height / 2;
+        if (this.inViewport(cx, cy) && document.elementFromPoint(cx, cy) === container) {
+          this.cancelHideTimer();
+          return; // still there, no need to re-probe
+        }
       }
-      // Center miss — popup may have moved; fall through to search
+      // Mouse moved far or center miss — fall through to re-probe
     }
 
     // Search near the mouse cursor (where Yomitan typically shows)
@@ -182,6 +196,8 @@ export class YomitanObserver {
       if (rect.width >= MIN_POPUP_SIZE_PX && rect.height >= MIN_POPUP_SIZE_PX) {
         // Confirmed visible popup — cancel any pending hide timer
         this.cancelHideTimer();
+        this.lastProbeMouseX = this.mouseX;
+        this.lastProbeMouseY = this.mouseY;
         if (!this.popupVisible) {
           this.onPopupShown(rect, container);
         } else if (this.hasRectChanged(rect)) {
@@ -231,8 +247,8 @@ export class YomitanObserver {
 
   /**
    * From a known hit point, walk outward to approximate the popup edges.
-   * Probes horizontal edges at the vertical midpoint (and vice versa)
-   * for more accurate bounds regardless of where the initial hit was.
+   * Uses two-pass probing: first finds approximate extents, then re-probes
+   * at the midpoints for stable results regardless of initial hit position.
    */
   private probePopupBounds(hitX: number, hitY: number): DOMRect {
     const c = this.trackedContainer;
@@ -250,6 +266,13 @@ export class YomitanObserver {
     let right = hitX;
     while (left - s >= 0 && document.elementFromPoint(left - s, midY) === c) left -= s;
     while (right + s < window.innerWidth && document.elementFromPoint(right + s, midY) === c) right += s;
+
+    // Second pass: re-probe vertical at horizontal midpoint for stability
+    const midX = Math.round((left + right) / 2);
+    top = midY;
+    bottom = midY;
+    while (top - s >= 0 && document.elementFromPoint(midX, top - s) === c) top -= s;
+    while (bottom + s < window.innerHeight && document.elementFromPoint(midX, bottom + s) === c) bottom += s;
 
     return new DOMRect(left, top, right - left, bottom - top);
   }
