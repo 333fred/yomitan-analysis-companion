@@ -1,6 +1,9 @@
 import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/chat/completions';
 import type { LLMResponse } from './types';
 
+/** How long (ms) to wait for the next chunk before treating the stream as stalled. */
+const STREAM_INACTIVITY_TIMEOUT_MS = 60_000;
+
 export function parseCompletionResponse(
   json: ChatCompletion,
   providerName: string,
@@ -28,15 +31,16 @@ export async function readSSEStream(
   const decoder = new TextDecoder();
   let fullText = '';
   let buffer = '';
+  let finishReason: string | null = null;
+  let streamError: string | null = null;
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithTimeout(reader, STREAM_INACTIVITY_TIMEOUT_MS);
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n');
-      // Keep the last (possibly incomplete) line in the buffer
       buffer = lines.pop() ?? '';
 
       for (const line of lines) {
@@ -44,14 +48,30 @@ export async function readSSEStream(
         if (!trimmed || trimmed.startsWith(':')) continue;
 
         if (trimmed === 'data: [DONE]') {
-          return { text: fullText, provider: providerName, success: true };
+          return buildStreamResult(fullText, providerName, finishReason, streamError);
         }
 
         if (trimmed.startsWith('data: ')) {
           const jsonStr = trimmed.slice(6);
           try {
-            const parsed: ChatCompletionChunk = JSON.parse(jsonStr);
-            const content = parsed.choices?.[0]?.delta?.content;
+            const parsed = JSON.parse(jsonStr);
+
+            // Check for error objects in the stream (some APIs embed errors
+            // in the SSE body after sending a 200 status).
+            if (parsed.error) {
+              streamError =
+                typeof parsed.error === 'string'
+                  ? parsed.error
+                  : parsed.error.message ?? JSON.stringify(parsed.error);
+              continue;
+            }
+
+            const chunk = parsed as ChatCompletionChunk;
+            const choice = chunk.choices?.[0];
+            if (choice?.finish_reason) {
+              finishReason = choice.finish_reason;
+            }
+            const content = choice?.delta?.content;
             if (content) {
               fullText += content;
               onChunk(content);
@@ -64,7 +84,6 @@ export async function readSSEStream(
     }
   } catch (err) {
     if (fullText) {
-      // Partial success — return what we got
       return { text: fullText, provider: providerName, success: true };
     }
     return {
@@ -75,6 +94,56 @@ export async function readSSEStream(
     };
   } finally {
     reader.releaseLock();
+  }
+
+  return buildStreamResult(fullText, providerName, finishReason, streamError);
+}
+
+/** Read with an inactivity timeout so a stalled stream doesn't hang forever. */
+async function readWithTimeout(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  timeoutMs: number,
+): Promise<ReadableStreamReadResult<Uint8Array>> {
+  return Promise.race([
+    reader.read(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Stream timed out — no data received')), timeoutMs),
+    ),
+  ]);
+}
+
+function buildStreamResult(
+  fullText: string,
+  providerName: string,
+  finishReason: string | null,
+  streamError: string | null,
+): LLMResponse {
+  if (streamError) {
+    return {
+      text: fullText,
+      provider: providerName,
+      success: false,
+      error: `API stream error: ${streamError}`,
+    };
+  }
+
+  if (finishReason === 'content_filter') {
+    return {
+      text: fullText,
+      provider: providerName,
+      success: false,
+      error: 'Response blocked by content filter. Try rephrasing or using a different model.',
+    };
+  }
+
+  if (!fullText) {
+    const hint = finishReason ? ` (finish_reason: ${finishReason})` : '';
+    return {
+      text: '',
+      provider: providerName,
+      success: false,
+      error: `Model returned an empty response${hint}. The model may not support this request — try a different model.`,
+    };
   }
 
   return { text: fullText, provider: providerName, success: true };
