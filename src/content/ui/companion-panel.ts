@@ -1,18 +1,17 @@
 import { SectionRenderer } from './section-renderer';
 
 const SHIMMER_LINE_COUNT = 5;
-const MIN_WIDTH = 350;
-const MAX_WIDTH = 600;
-const MAX_PANEL_HEIGHT = 400;
-const MIN_USABLE_HEIGHT = 150;
+const RIGHT_PANEL_WIDTH = 380;
+const BOTTOM_PANEL_HEIGHT = 300;
 
-function clamp(v: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(v, hi));
-}
+export type PanelPosition = 'right' | 'bottom';
 
 export class CompanionPanel {
   private container: HTMLDivElement | null = null;
+  private contentArea: HTMLDivElement | null = null;
   private sectionRenderer: SectionRenderer;
+  private position: PanelPosition = 'right';
+  private onCloseCallback: (() => void) | null = null;
 
   constructor() {
     this.sectionRenderer = new SectionRenderer();
@@ -22,73 +21,79 @@ export class CompanionPanel {
     this.destroy();
 
     const panel = document.createElement('div');
-    panel.className = 'ycc-panel ycc-hidden';
+    panel.className = `ycc-side-panel ycc-side-panel--${this.position}`;
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'ycc-side-panel-header';
+
+    const title = document.createElement('span');
+    title.className = 'ycc-side-panel-title';
+    title.textContent = '✨ AI Analysis';
+    header.appendChild(title);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'ycc-side-panel-close';
+    closeBtn.type = 'button';
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', () => this.close());
+    header.appendChild(closeBtn);
+
+    panel.appendChild(header);
+
+    // Scrollable content
+    const content = document.createElement('div');
+    content.className = 'ycc-side-panel-content';
+    panel.appendChild(content);
 
     parentShadowRoot.appendChild(panel);
     this.container = panel;
+    this.contentArea = content;
     return panel;
   }
 
-  position(popupRect: DOMRect, buttonRect: DOMRect): void {
-    if (!this.container) return;
-
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    const gap = 4;
-
-    const width = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, popupRect.width + 20));
-    const left = clamp(
-      popupRect.left + (popupRect.width - width) / 2,
-      gap, vw - width - gap,
-    );
-
-    this.container.style.width = `${width}px`;
-    this.container.style.left = `${left}px`;
-
-    const spaceBelow = vh - buttonRect.bottom - gap;
-    const spaceAbove = popupRect.top - gap;
-
-    if (spaceBelow >= MIN_USABLE_HEIGHT) {
-      // Below button (preferred)
-      this.container.style.top = `${buttonRect.bottom + gap}px`;
-      this.container.style.transform = '';
-      this.container.style.maxHeight = `${Math.min(MAX_PANEL_HEIGHT, spaceBelow)}px`;
-    } else if (spaceAbove >= MIN_USABLE_HEIGHT) {
-      // Above popup — anchor bottom edge just above the popup using translateY
-      this.container.style.top = `${popupRect.top - gap}px`;
-      this.container.style.transform = 'translateY(-100%)';
-      this.container.style.maxHeight = `${Math.min(MAX_PANEL_HEIGHT, spaceAbove)}px`;
-    } else {
-      // Tight — use whichever side is bigger
-      if (spaceBelow >= spaceAbove) {
-        this.container.style.top = `${buttonRect.bottom + gap}px`;
-        this.container.style.transform = '';
-        this.container.style.maxHeight = `${Math.max(100, spaceBelow)}px`;
-      } else {
-        this.container.style.top = `${popupRect.top - gap}px`;
-        this.container.style.transform = 'translateY(-100%)';
-        this.container.style.maxHeight = `${Math.max(100, spaceAbove)}px`;
+  setPosition(pos: PanelPosition): void {
+    this.position = pos;
+    if (this.container) {
+      this.container.className = `ycc-side-panel ycc-side-panel--${pos}`;
+      // If currently open, reapply page margin
+      if (this.isOpen()) {
+        this.applyPageMargin();
       }
     }
   }
 
-  show(): void {
-    this.container?.classList.remove('ycc-hidden');
+  onClose(cb: () => void): void {
+    this.onCloseCallback = cb;
   }
 
-  hide(): void {
-    this.container?.classList.add('ycc-hidden');
+  open(): void {
+    if (!this.container) return;
+    this.container.classList.add('ycc-open');
+    this.applyPageMargin();
+  }
+
+  close(): void {
+    if (!this.container) return;
+    this.container.classList.remove('ycc-open');
+    this.removePageMargin();
+    this.onCloseCallback?.();
+  }
+
+  isOpen(): boolean {
+    return this.container?.classList.contains('ycc-open') ?? false;
   }
 
   destroy(): void {
+    this.removePageMargin();
     this.container?.remove();
     this.container = null;
+    this.contentArea = null;
   }
 
   showLoading(): void {
-    if (!this.container) return;
-    this.clear();
-    this.show();
+    if (!this.contentArea) return;
+    this.clearContent();
 
     const loader = document.createElement('div');
     loader.className = 'ycc-panel-loading';
@@ -97,13 +102,12 @@ export class CompanionPanel {
       line.className = 'ycc-shimmer-line';
       loader.appendChild(line);
     }
-    this.container.appendChild(loader);
+    this.contentArea.appendChild(loader);
   }
 
   showError(message: string, retryable: boolean, onRetry?: () => void): void {
-    if (!this.container) return;
-    this.clear();
-    this.show();
+    if (!this.contentArea) return;
+    this.clearContent();
 
     const errorDiv = document.createElement('div');
     errorDiv.className = 'ycc-error';
@@ -122,17 +126,14 @@ export class CompanionPanel {
       errorDiv.appendChild(retryBtn);
     }
 
-    this.container.appendChild(errorDiv);
+    this.contentArea.appendChild(errorDiv);
   }
 
   appendStreamingChunk(chunk: string): void {
-    if (!this.container) return;
+    if (!this.contentArea) return;
 
-    // Clear loading shimmer on first chunk
-    const loader = this.container.querySelector('.ycc-panel-loading');
-    if (loader) {
-      loader.remove();
-    }
+    const loader = this.contentArea.querySelector('.ycc-panel-loading');
+    if (loader) loader.remove();
 
     this.sectionRenderer.appendChunk(chunk);
   }
@@ -141,14 +142,29 @@ export class CompanionPanel {
     this.sectionRenderer.finalize();
   }
 
-  clear(): void {
-    if (!this.container) return;
-    this.container.innerHTML = '';
-    this.sectionRenderer.attach(this.container);
+  clearContent(): void {
+    if (!this.contentArea) return;
+    this.contentArea.innerHTML = '';
+    this.sectionRenderer.attach(this.contentArea);
   }
 
   getElement(): HTMLDivElement | null {
     return this.container;
+  }
+
+  // ── Private ──────────────────────────────────────────────────────────
+
+  private applyPageMargin(): void {
+    if (this.position === 'right') {
+      document.documentElement.style.marginRight = `${RIGHT_PANEL_WIDTH}px`;
+    } else {
+      document.documentElement.style.marginBottom = `${BOTTOM_PANEL_HEIGHT}px`;
+    }
+  }
+
+  private removePageMargin(): void {
+    document.documentElement.style.marginRight = '';
+    document.documentElement.style.marginBottom = '';
   }
 
   private escapeHtml(text: string): string {

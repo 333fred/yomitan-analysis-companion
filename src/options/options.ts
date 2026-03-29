@@ -28,6 +28,7 @@ const openaiModel = $<HTMLInputElement>('openai-model');
 const explanationLanguage = $<HTMLSelectElement>('explanation-language');
 const detailLevel = $<HTMLSelectElement>('detail-level');
 const theme = $<HTMLSelectElement>('theme');
+const panelPosition = $<HTMLSelectElement>('panel-position');
 
 const refreshModelsBtn = $<HTMLButtonElement>('refresh-models-btn');
 
@@ -178,6 +179,7 @@ async function loadSettings(): Promise<void> {
 
   // Appearance
   theme.value = config.appearance.theme;
+  if (panelPosition) panelPosition.value = config.appearance.panelPosition;
 }
 
 // ── Gather form values into a config object ─────────────────────────
@@ -205,6 +207,7 @@ function gatherConfig(): ExtensionConfig {
 
   const appearance: AppearanceConfig = {
     theme: theme.value as AppearanceConfig['theme'],
+    panelPosition: (panelPosition?.value ?? 'right') as AppearanceConfig['panelPosition'],
   };
 
   return { provider, analysis, appearance };

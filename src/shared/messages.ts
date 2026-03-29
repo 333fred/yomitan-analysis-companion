@@ -111,6 +111,7 @@ export interface AnalysisConfig {
 
 export interface AppearanceConfig {
   theme: 'auto' | 'light' | 'dark';
+  panelPosition: 'right' | 'bottom';
 }
 
 export type MessageToBackground =

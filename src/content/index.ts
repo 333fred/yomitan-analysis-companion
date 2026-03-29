@@ -2,8 +2,9 @@ import { YomitanObserver, type YomitanPopupEvent } from './yomitan-observer';
 import { SentenceExtractor, type SentenceData } from './sentence-extractor';
 import { requestAnalysis } from './messaging';
 import { PanelHost } from './ui/panel-host';
+import { getConfig } from '../shared/storage';
 
-const LOG_PREFIX = '[YomitanCompanion]';
+const LOG = '[YomitanCompanion]';
 
 // ── State ───────────────────────────────────────────────────────────────
 
@@ -15,10 +16,6 @@ let mounted = false;
 let cancelStream: (() => void) | null = null;
 let isAnalyzing = false;
 let lastSentenceData: SentenceData | null = null;
-
-/** Sentence captured eagerly when the popup first appears, before the user
- *  has a chance to click our button (which dismisses Yomitan's popup and
- *  deselects the text). */
 let preCapturedSentence: SentenceData | null = null;
 
 /** Grace-period timer that keeps the button visible after Yomitan hides. */
@@ -44,46 +41,32 @@ function handlePopupEvent(event: YomitanPopupEvent): void {
 function onPopupShown(event: YomitanPopupEvent): void {
   if (!event.rect) return;
 
-  // If the analysis panel is visible, ignore popup events — hovering over
-  // Japanese text inside our panel triggers Yomitan, and we don't want
-  // that to reposition or disrupt the current analysis.
-  if (panelHost.isPanelVisible()) return;
-
   cancelHideGrace();
   ensureMounted();
 
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   panelHost.setTheme(isDark ? 'dark' : 'light');
 
-  // Pre-capture sentence while the hovered text is still accessible.
-  // Clicking our button will dismiss Yomitan and deselect the text,
-  // so we must grab the data now.
+  // Pre-capture sentence while text is accessible (before user clicks our
+  // button, which dismisses Yomitan and deselects the text).
   preCapturedSentence = extractor.extractSentence();
 
   panelHost.getButton().show();
-  panelHost.positionRelativeTo(event.rect);
+  panelHost.positionButton(event.rect);
 }
 
 function onPopupHidden(): void {
-  // While an analysis is running or results are displayed, keep UI visible
-  if (isAnalyzing || panelHost.isPanelVisible()) return;
-
-  // Keep the button visible briefly so the user can still reach it after
-  // Yomitan auto-dismisses (mouse-leave or click-outside behaviour).
+  // Keep button visible briefly so user can reach it after Yomitan dismisses
   cancelHideGrace();
   hideGraceTimer = window.setTimeout(() => {
     panelHost.getButton().hide();
-    panelHost.getPanel().hide();
-    preCapturedSentence = null;
     hideGraceTimer = null;
   }, HIDE_GRACE_MS);
 }
 
 function onPopupRepositioned(event: YomitanPopupEvent): void {
   if (!event.rect) return;
-  // Don't reposition while the panel is showing analysis results
-  if (panelHost.isPanelVisible()) return;
-  panelHost.positionRelativeTo(event.rect);
+  panelHost.positionButton(event.rect);
 }
 
 function ensureMounted(): void {
@@ -91,31 +74,13 @@ function ensureMounted(): void {
 
   panelHost.mount();
   panelHost.getButton().onClick(onAnalyzeClick);
-  setupClickOutsideDismiss();
+
+  // Load panel position from config
+  getConfig().then((config) => {
+    panelHost.setPanelPosition(config.appearance.panelPosition);
+  });
+
   mounted = true;
-}
-
-/** Dismiss analysis panel + reset button when clicking outside our UI. */
-function setupClickOutsideDismiss(): void {
-  document.addEventListener('mousedown', (e: MouseEvent) => {
-    if (!panelHost.isPanelVisible()) return;
-
-    const path = e.composedPath();
-    if (panelHost.containsEventTarget(path)) return;
-
-    // Click was outside — dismiss
-    dismissUI();
-  }, true);
-}
-
-/** Fully dismiss our UI (cancel analysis, hide everything, reset state). */
-function dismissUI(): void {
-  cancelCurrentAnalysis();
-  cancelHideGrace();
-  panelHost.getButton().hide();
-  panelHost.getPanel().hide();
-  preCapturedSentence = null;
-  lastSentenceData = null;
 }
 
 function cancelHideGrace(): void {
@@ -143,14 +108,14 @@ function onAnalyzeClick(): void {
 
   cancelHideGrace();
 
-  // Try live extraction first (in case user manually selected text),
-  // then fall back to the data we captured when the popup appeared.
   const data = extractor.extractSentence() ?? preCapturedSentence;
   if (!data) {
-    console.warn(LOG_PREFIX, 'Could not extract sentence from page');
-    panelHost.getPanel().showError(
-      'Could not extract sentence. Try selecting text first.', false,
-    );
+    console.warn(LOG, 'Could not extract sentence from page');
+    const panel = panelHost.getPanel();
+    panel.clearContent();
+    panel.showError('Could not extract sentence. Try selecting text first.', false);
+    panel.open();
+    panelHost.hideReopenButton();
     return;
   }
 
@@ -166,13 +131,10 @@ function startAnalysis(data: SentenceData): void {
   const panel = panelHost.getPanel();
 
   button.setLoading(true);
+  panel.clearContent();
   panel.showLoading();
-  panel.show();
-
-  const popupRect = observer.getCurrentPopupRect();
-  if (popupRect) {
-    panelHost.positionRelativeTo(popupRect);
-  }
+  panel.open();
+  panelHost.hideReopenButton();
 
   cancelStream = requestAnalysis(data, {
     onChunk(chunk: string) {
@@ -203,11 +165,12 @@ function init(): void {
   extractor.startTracking();
   observer.addListener(handlePopupEvent);
   observer.start();
-  console.debug(LOG_PREFIX, 'Content script initialized');
+  console.debug(LOG, 'Content script initialized');
 }
 
 function destroy(): void {
   cancelCurrentAnalysis();
+  cancelHideGrace();
   observer.stop();
   extractor.stopTracking();
 
@@ -216,10 +179,9 @@ function destroy(): void {
     mounted = false;
   }
 
-  console.debug(LOG_PREFIX, 'Content script destroyed');
+  console.debug(LOG, 'Content script destroyed');
 }
 
-// Ensure we clean up if the content script is unloaded (e.g. extension update)
 if (typeof globalThis !== 'undefined') {
   const prevDestroy = (globalThis as Record<string, unknown>).__yomitanCompanionDestroy;
   if (typeof prevDestroy === 'function') prevDestroy();

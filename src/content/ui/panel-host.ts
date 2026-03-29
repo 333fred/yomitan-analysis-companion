@@ -1,6 +1,6 @@
 import { getStyles } from './styles';
 import { AnalyzeButton } from './analyze-button';
-import { CompanionPanel } from './companion-panel';
+import { CompanionPanel, type PanelPosition } from './companion-panel';
 
 const HOST_ID = 'yomitan-copilot-companion-host';
 
@@ -10,6 +10,7 @@ export class PanelHost {
   private styleElement: HTMLStyleElement | null = null;
   private button: AnalyzeButton;
   private panel: CompanionPanel;
+  private reopenBtn: HTMLButtonElement | null = null;
   private theme: 'light' | 'dark' = 'light';
 
   constructor() {
@@ -20,13 +21,11 @@ export class PanelHost {
   mount(): void {
     if (this.hostElement) return;
 
-    // Remove any stale host from a previous content-script injection
     const existing = document.getElementById(HOST_ID);
     if (existing) existing.remove();
 
     const host = document.createElement('div');
     host.id = HOST_ID;
-    // Fixed positioning so viewport coords from getBoundingClientRect work directly
     host.style.position = 'fixed';
     host.style.top = '0';
     host.style.left = '0';
@@ -40,18 +39,37 @@ export class PanelHost {
     this.hostElement = host;
     this.shadowRoot = host.attachShadow({ mode: 'open' });
 
-    // Inject styles
     this.styleElement = document.createElement('style');
     this.styleElement.textContent = getStyles(this.theme);
     this.shadowRoot.appendChild(this.styleElement);
 
     this.button.create(this.shadowRoot);
     this.panel.create(this.shadowRoot);
+
+    // Floating reopen button (visible when panel is closed)
+    const reopen = document.createElement('button');
+    reopen.className = 'ycc-reopen-button ycc-hidden';
+    reopen.type = 'button';
+    reopen.textContent = '✨';
+    reopen.title = 'Open AI Analysis';
+    reopen.addEventListener('click', () => {
+      this.panel.open();
+      reopen.classList.add('ycc-hidden');
+    });
+    this.shadowRoot.appendChild(reopen);
+    this.reopenBtn = reopen;
+
+    // When the panel is closed, show the reopen button
+    this.panel.onClose(() => {
+      this.reopenBtn?.classList.remove('ycc-hidden');
+    });
   }
 
   unmount(): void {
     this.button.destroy();
     this.panel.destroy();
+    this.reopenBtn?.remove();
+    this.reopenBtn = null;
     this.hostElement?.remove();
     this.hostElement = null;
     this.shadowRoot = null;
@@ -73,26 +91,26 @@ export class PanelHost {
     }
   }
 
-  positionRelativeTo(popupRect: DOMRect): void {
-    // Position the button centered below the popup
-    this.button.position(popupRect);
-
-    // Position the panel below the button
-    const btnEl = this.button.getElement();
-    if (btnEl) {
-      const btnRect = btnEl.getBoundingClientRect();
-      this.panel.position(popupRect, btnRect);
+  setPanelPosition(pos: PanelPosition): void {
+    this.panel.setPosition(pos);
+    // Update reopen button position class
+    if (this.reopenBtn) {
+      this.reopenBtn.className = `ycc-reopen-button ycc-reopen--${pos}`;
+      if (!this.panel.isOpen()) {
+        // keep visible
+      } else {
+        this.reopenBtn.classList.add('ycc-hidden');
+      }
     }
   }
 
-  /** Check whether a DOM event path includes our shadow host. */
-  containsEventTarget(composedPath: EventTarget[]): boolean {
-    return this.hostElement !== null && composedPath.includes(this.hostElement);
+  /** Position the analyze button relative to a Yomitan popup rect. */
+  positionButton(popupRect: DOMRect): void {
+    this.button.position(popupRect);
   }
 
-  /** Whether the analysis panel is currently visible. */
-  isPanelVisible(): boolean {
-    const el = this.panel.getElement();
-    return el !== null && !el.classList.contains('ycc-hidden');
+  /** Hide the reopen button (e.g. when panel opens via analyze). */
+  hideReopenButton(): void {
+    this.reopenBtn?.classList.add('ycc-hidden');
   }
 }

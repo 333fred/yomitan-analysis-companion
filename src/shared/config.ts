@@ -49,5 +49,6 @@ export const DEFAULT_CONFIG: ExtensionConfig = {
   },
   appearance: {
     theme: 'auto',
+    panelPosition: 'right',
   },
 };
