@@ -3,6 +3,7 @@ import type { ILLMProvider } from './types';
 import { getConfig } from '../shared/storage';
 import { GitHubModelsProvider } from './github-models';
 import { OpenAICompatibleProvider } from './openai-compatible';
+import { AnthropicProvider } from './anthropic';
 
 export function createProvider(config: ProviderConfig): ILLMProvider {
   switch (config.type) {
@@ -28,6 +29,16 @@ export function createProvider(config: ProviderConfig): ILLMProvider {
         oa.apiKey ?? '',
         oa.model ?? 'gpt-4',
       );
+    }
+
+    case 'anthropic': {
+      const ac = config.anthropic;
+      if (!ac?.apiKey) {
+        throw new Error(
+          'Anthropic provider requires an API key. Set it in the extension options.',
+        );
+      }
+      return new AnthropicProvider(ac.apiKey, ac.model ?? 'claude-sonnet-4-6');
     }
 
     default:

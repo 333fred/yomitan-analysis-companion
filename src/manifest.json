@@ -13,7 +13,8 @@
     "storage"
   ],
   "host_permissions": [
-    "https://models.github.ai/*"
+    "https://models.github.ai/*",
+    "https://api.anthropic.com/*"
   ],
   "optional_host_permissions": [
     "https://*/*",

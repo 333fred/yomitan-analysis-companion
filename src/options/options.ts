@@ -16,10 +16,14 @@ const providerRadios = document.querySelectorAll<HTMLInputElement>(
   'input[name="provider"]',
 );
 const githubSettings = $<HTMLDivElement>('github-models-settings');
+const anthropicSettings = $<HTMLDivElement>('anthropic-settings');
 const openaiSettings = $<HTMLDivElement>('openai-settings');
 
 const githubToken = $<HTMLInputElement>('github-token');
 const githubModel = $<HTMLSelectElement>('github-model');
+
+const anthropicKey = $<HTMLInputElement>('anthropic-key');
+const anthropicModel = $<HTMLSelectElement>('anthropic-model');
 
 const openaiUrl = $<HTMLInputElement>('openai-url');
 const openaiKey = $<HTMLInputElement>('openai-key');
@@ -49,6 +53,7 @@ function getSelectedProvider(): ProviderConfig['type'] {
 
 function showProviderPanel(type: ProviderConfig['type']): void {
   githubSettings.hidden = type !== 'github-models';
+  anthropicSettings.hidden = type !== 'anthropic';
   openaiSettings.hidden = type !== 'openai-compatible';
 }
 
@@ -173,6 +178,10 @@ async function loadSettings(): Promise<void> {
   openaiKey.value = config.provider.openaiCompatible?.apiKey ?? '';
   openaiModel.value = config.provider.openaiCompatible?.model ?? '';
 
+  // Anthropic
+  anthropicKey.value = config.provider.anthropic?.apiKey ?? '';
+  anthropicModel.value = config.provider.anthropic?.model ?? 'claude-sonnet-4-6';
+
   // Analysis
   explanationLanguage.value = config.analysis.explanationLanguage;
   detailLevel.value = config.analysis.detailLevel;
@@ -197,6 +206,10 @@ function gatherConfig(): ExtensionConfig {
       baseUrl: openaiUrl.value.trim(),
       apiKey: openaiKey.value.trim(),
       model: openaiModel.value.trim(),
+    },
+    anthropic: {
+      apiKey: anthropicKey.value.trim(),
+      model: anthropicModel.value,
     },
   };
 

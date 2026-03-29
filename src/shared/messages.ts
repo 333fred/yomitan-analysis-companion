@@ -92,13 +92,17 @@ export interface ExtensionConfig {
 }
 
 export interface ProviderConfig {
-  type: 'github-models' | 'openai-compatible';
+  type: 'github-models' | 'openai-compatible' | 'anthropic';
   githubModels?: {
     token: string;
     model: string;
   };
   openaiCompatible?: {
     baseUrl: string;
+    apiKey: string;
+    model: string;
+  };
+  anthropic?: {
     apiKey: string;
     model: string;
   };
