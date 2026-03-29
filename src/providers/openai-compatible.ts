@@ -92,8 +92,8 @@ export class OpenAICompatibleProvider implements ILLMProvider {
 
   async validate(): Promise<{ valid: boolean; error?: string }> {
     const result = await this.sendRequest({
-      messages: [{ role: 'user', content: 'hi' }],
-      maxTokens: 1,
+      messages: [{ role: 'user', content: 'Say OK.' }],
+      maxTokens: 16,
     });
 
     if (result.success) {
