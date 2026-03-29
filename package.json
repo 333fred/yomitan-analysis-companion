@@ -1,0 +1,24 @@
+{
+  "name": "yomitan-copilot-companion",
+  "version": "0.1.0",
+  "description": "AI-powered grammar analysis companion for Yomitan",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "lint": "eslint src/",
+    "format": "prettier --write src/"
+  },
+  "keywords": ["yomitan", "japanese", "grammar", "ai", "browser-extension"],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.33",
+    "@types/chrome": "^0.1.38",
+    "eslint": "^10.1.0",
+    "prettier": "^3.8.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3"
+  }
+}

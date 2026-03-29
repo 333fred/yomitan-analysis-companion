@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yomitan Copilot Companion — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <h1>⚡ Yomitan Copilot Companion</h1>
+    <p class="subtitle">Configure your AI-powered grammar analysis companion</p>
+
+    <section class="settings-group">
+      <h2>AI Provider</h2>
+
+      <div class="provider-selector">
+        <label class="radio-label">
+          <input type="radio" name="provider" value="github-models" checked>
+          GitHub Models <span class="badge">recommended</span>
+        </label>
+        <label class="radio-label">
+          <input type="radio" name="provider" value="openai-compatible">
+          Custom OpenAI-compatible endpoint
+        </label>
+      </div>
+
+      <!-- GitHub Models settings -->
+      <div id="github-models-settings" class="provider-settings">
+        <label class="field">
+          GitHub Personal Access Token
+          <input type="password" id="github-token" placeholder="ghp_..." autocomplete="off">
+          <small>Requires <code>models:read</code> scope.
+            <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">Create token →</a>
+          </small>
+        </label>
+        <label class="field">
+          Model
+          <select id="github-model">
+            <option value="openai/gpt-4.1">GPT-4.1 (recommended)</option>
+            <option value="openai/gpt-4.1-mini">GPT-4.1 Mini</option>
+            <option value="openai/gpt-4.1-nano">GPT-4.1 Nano (fastest)</option>
+            <option value="openai/gpt-4o">GPT-4o</option>
+            <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+          </select>
+        </label>
+      </div>
+
+      <!-- Custom endpoint settings -->
+      <div id="openai-settings" class="provider-settings" hidden>
+        <label class="field">
+          API Base URL
+          <input type="url" id="openai-url" placeholder="https://api.openai.com/v1">
+          <small>The base URL of the OpenAI-compatible API (without <code>/chat/completions</code>).</small>
+        </label>
+        <label class="field">
+          API Key
+          <input type="password" id="openai-key" placeholder="sk-..." autocomplete="off">
+          <small>Leave blank if your endpoint does not require authentication.</small>
+        </label>
+        <label class="field">
+          Model Name
+          <input type="text" id="openai-model" placeholder="gpt-4-turbo">
+        </label>
+      </div>
+
+      <div class="inline-action">
+        <button id="validate-btn" class="btn btn-secondary" type="button">Test Connection</button>
+        <span id="validate-status" class="status-message" hidden></span>
+      </div>
+    </section>
+
+    <section class="settings-group">
+      <h2>Analysis Preferences</h2>
+      <label class="field">
+        Explanation Language
+        <select id="explanation-language">
+          <option value="english">English</option>
+          <option value="japanese">Japanese</option>
+        </select>
+      </label>
+      <label class="field">
+        Detail Level
+        <select id="detail-level">
+          <option value="full">Full (recommended)</option>
+          <option value="brief">Brief</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="settings-group">
+      <h2>Appearance</h2>
+      <label class="field">
+        Theme
+        <select id="theme">
+          <option value="auto">Auto (match page)</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+    </section>
+
+    <div class="actions">
+      <button id="save-btn" class="btn btn-primary" type="button">Save Settings</button>
+      <span id="save-status" class="status-message" hidden></span>
+    </div>
+  </div>
+
+  <script type="module" src="options.ts"></script>
+</body>
+</html>
