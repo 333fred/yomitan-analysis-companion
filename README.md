@@ -4,37 +4,37 @@ AI-powered grammar analysis companion for [Yomitan](https://github.com/yomidevs/
 
 ## What It Does
 
-When you look up a Japanese word with Yomitan, this companion extension adds an **"✨ Analyze"** button below the popup. Click it to get:
+When you look up a Japanese word with Yomitan, this companion extension adds an **"✨ Analyze"** button near the popup. Click it to get a streaming analysis in a **docked side panel**:
 
 - **Full sentence translation** — natural English translation of the surrounding sentence
-- **Word-by-word breakdown** — every word/morpheme with reading, meaning, and grammatical role
+- **Focus word analysis** — detailed explanation of the specific word you looked up (dictionary form, conjugation, part of speech)
 - **Grammar points** — conjugation rules, particle usage, and sentence patterns explained
-- **Focus word analysis** — detailed explanation of the specific word you looked up
 - **Key takeaways** — the most important grammar concepts to remember
+- **Word-by-word breakdown** — every word/morpheme with reading, meaning, and grammatical role
 
-Responses stream in progressively — you see useful output within ~1 second.
+Responses stream in progressively — you see useful output within ~1 second. The side panel persists independently of Yomitan's popup, so you can scroll through the analysis at your own pace.
 
 ## How It Works
 
 ```
 You hover over Japanese text → Yomitan shows its dictionary popup
-                              → Companion adds "✨ Analyze" button below it
+                              → Companion adds "✨ Analyze" button near it
 You click Analyze             → Extension extracts the surrounding sentence
                               → Sends it to your configured AI provider
                               → Streams back a structured grammar analysis
-                              → Renders it in a panel below Yomitan's popup
+                              → Renders it in a docked side panel
 ```
 
 ### Technical Architecture
 
 Yomitan renders its popup inside a **closed Shadow DOM + iframe**, so we can't inject into it directly. Instead, our content script:
 
-1. **Detects** Yomitan's popup container via `MutationObserver`
-2. **Positions** our UI below it using the container's bounding rect
-3. **Extracts** the sentence independently from the page DOM (hybrid Selection API + cursor-based extraction)
-4. **Streams** the AI analysis from the service worker over a message port
+1. **Detects** Yomitan's popup via `document.elementFromPoint` probing — per the Shadow DOM spec, `elementFromPoint` returns the shadow host for elements inside closed shadows
+2. **Pre-captures** the sentence from the page DOM while text is still accessible (before the user clicks our button, which would dismiss Yomitan)
+3. **Positions** a floating analyze button near the popup with cascade positioning (below → right → left → above)
+4. **Streams** the AI analysis from the service worker over a message port into a docked side panel
 
-Our UI is also rendered inside a Shadow DOM to isolate our styles from the host page.
+Our UI is rendered inside a Shadow DOM to isolate styles from the host page.
 
 ## Setup
 
@@ -42,15 +42,15 @@ Our UI is also rendered inside a Shadow DOM to isolate our styles from the host 
 
 - Chrome or Edge browser
 - [Yomitan extension](https://chromewebstore.google.com/detail/yomitan/likgccmbimhjbgkjambclfkhldnlhbnn) installed
-- A GitHub account (for the default GitHub Models AI provider)
+- An API key for at least one supported AI provider
 
 ### Installation (Development)
 
 ```bash
-git clone https://github.com/your-username/yomitan-copilot-companion.git
-cd yomitan-copilot-companion
+git clone https://github.com/333fred/yomitan-analysis-companion.git
+cd yomitan-analysis-companion
 npm install
-npm run dev
+npm run build
 ```
 
 Then load the extension:
@@ -63,15 +63,23 @@ Then load the extension:
 ### Configure AI Provider
 
 1. Click the extension icon → **Options** (or right-click → Extension options)
-2. Choose your AI provider:
+2. Configure one or more providers in the collapsible sections:
 
 #### GitHub Models (Recommended)
 
-Uses GitHub's official AI Models API — works with GPT-4.1, GPT-4o, and more.
+Uses GitHub's official AI Models API — works with GPT-4.1, GPT-5 Mini, and many more.
 
 1. Create a [fine-grained Personal Access Token](https://github.com/settings/tokens?type=beta) with the **`models:read`** permission
-2. Paste the token in the settings page
-3. Choose a model (GPT-4.1 recommended for quality)
+2. Paste the token in the GitHub Models section
+3. Models are fetched dynamically from the catalog (with descriptions and context window info)
+
+#### Anthropic (Claude)
+
+Direct access to Claude models via Anthropic's Messages API.
+
+1. Get an API key from [console.anthropic.com](https://console.anthropic.com/settings/keys)
+2. Paste the key in the Anthropic section
+3. Available models: Opus 4.6, Sonnet 4.6/4.5, Haiku 4.5
 
 #### Custom OpenAI-Compatible Endpoint
 
@@ -81,14 +89,24 @@ Works with any API that follows the OpenAI chat completions format:
 - **Ollama (local)**: base URL `http://localhost:11434/v1`, no API key needed
 - **Any compatible provider**: LM Studio, Together AI, Groq, etc.
 
+### Selecting a Model
+
+All configured providers' models appear in a single unified dropdown, grouped by provider. The info panel below shows the model's description, context window size, and capability tags to help you choose. Select any model — the extension uses the correct provider automatically.
+
 ## Usage
 
 1. Browse any page with Japanese text
 2. Hover over a word to trigger Yomitan's popup (as usual)
-3. Click the **"✨ Analyze"** button that appears below the popup
-4. Read the streaming grammar analysis in the companion panel
+3. Click the **"✨ Analyze"** button that appears near the popup
+4. Read the streaming grammar analysis in the docked side panel
+5. Close the panel with the **×** button; reopen with the floating **✨** button in the corner
 
-The panel closes automatically when Yomitan's popup closes.
+### Settings
+
+- **Detail level**: "Full" (5 sections) or "Brief" (3 sections — better for smaller models)
+- **Panel position**: Right side or bottom of the screen
+- **Theme**: Auto (matches page), light, or dark
+- **Explanation language**: English or Japanese
 
 ## Project Structure
 
@@ -97,44 +115,43 @@ src/
 ├── background/
 │   └── service-worker.ts        # AI provider orchestration, streaming
 ├── content/
-│   ├── index.ts                 # Content script entry point
-│   ├── yomitan-observer.ts      # MutationObserver for Yomitan detection
+│   ├── index.ts                 # Content script entry point & orchestration
+│   ├── yomitan-observer.ts      # elementFromPoint probing for popup detection
 │   ├── sentence-extractor.ts    # Hybrid sentence extraction from DOM
 │   ├── messaging.ts             # Port-based messaging with background
 │   └── ui/
-│       ├── panel-host.ts        # Shadow DOM host for all UI
-│       ├── analyze-button.ts    # The trigger button
-│       ├── companion-panel.ts   # Main analysis panel
+│       ├── panel-host.ts        # Shadow DOM host, button + panel management
+│       ├── analyze-button.ts    # Floating trigger button (cascade positioning)
+│       ├── companion-panel.ts   # Docked side panel (right or bottom)
 │       ├── section-renderer.ts  # Streaming markdown → structured sections
-│       └── styles.ts            # Scoped CSS (dark/light themes)
+│       └── styles.ts            # Scoped CSS (dark/light themes, panel, button)
 ├── providers/
 │   ├── types.ts                 # ILLMProvider interface
 │   ├── provider-factory.ts      # Creates provider from config
-│   ├── github-models.ts         # GitHub Models API adapter
+│   ├── sse-stream.ts            # Shared SSE parser for OpenAI-format streams
+│   ├── github-models.ts         # GitHub Models API adapter (+ catalog fetch)
+│   ├── anthropic.ts             # Anthropic Messages API adapter
 │   └── openai-compatible.ts     # Generic OpenAI-compatible adapter
 ├── prompts/
-│   └── grammar-analysis.ts      # System/user prompt templates
+│   └── grammar-analysis.ts      # System/user prompt templates (full + brief)
 ├── options/
 │   ├── options.html             # Settings page
 │   ├── options.css              # Settings styles
-│   └── options.ts               # Settings logic
+│   └── options.ts               # Settings logic (unified model dropdown)
 ├── shared/
-│   ├── messages.ts              # Message type definitions
+│   ├── messages.ts              # Message type definitions, config interfaces
 │   ├── storage.ts               # chrome.storage wrapper
-│   └── config.ts                # Constants, defaults
+│   └── config.ts                # Constants, defaults, fallback models
 └── manifest.json                # Extension manifest (MV3)
 ```
 
 ## Development
 
 ```bash
-npm run dev      # Start Vite dev server with HMR
 npm run build    # Production build → dist/
-npm run lint     # Run ESLint
-npm run format   # Run Prettier
 ```
 
-After running `npm run dev`, the `dist` folder updates automatically. Chrome will reload the extension on most changes (content script changes may require a manual reload).
+After building, the `dist` folder contains the complete extension. Reload the extension in `chrome://extensions` to pick up changes.
 
 ## Adding a New AI Provider
 
@@ -143,9 +160,10 @@ The provider system uses a simple adapter pattern:
 1. Create `src/providers/your-provider.ts` implementing `ILLMProvider`
 2. Add the provider type to `ProviderConfig` in `src/shared/messages.ts`
 3. Register it in `src/providers/provider-factory.ts`
-4. Add UI for configuration in `src/options/`
+4. Add credential UI in `src/options/options.html` (collapsible `<details>` section)
+5. Wire up the model entries in `src/options/options.ts` (add to `rebuildModelDropdown`)
 
-See `src/providers/github-models.ts` for a reference implementation.
+See `src/providers/anthropic.ts` for a complete reference (different API format), or `src/providers/github-models.ts` for an OpenAI-compatible one.
 
 ## Firefox Support
 
