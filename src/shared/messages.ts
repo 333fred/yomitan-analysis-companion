@@ -7,6 +7,8 @@ export const MESSAGE_TYPES = {
   VALIDATE_RESULT: 'validate-result',
   GET_CONFIG: 'get-config',
   CONFIG_RESULT: 'config-result',
+  FETCH_MODELS: 'fetch-models',
+  FETCH_MODELS_RESULT: 'fetch-models-result',
 } as const;
 
 export interface AnalyzeRequest {
@@ -68,6 +70,21 @@ export interface ConfigResult {
   payload: ExtensionConfig;
 }
 
+export interface FetchModelsRequest {
+  type: typeof MESSAGE_TYPES.FETCH_MODELS;
+  payload?: {
+    token?: string;
+  };
+}
+
+export interface FetchModelsResult {
+  type: typeof MESSAGE_TYPES.FETCH_MODELS_RESULT;
+  payload: {
+    models: Array<{ id: string; name: string; publisher: string }>;
+    error?: string;
+  };
+}
+
 export interface ExtensionConfig {
   provider: ProviderConfig;
   analysis: AnalysisConfig;
@@ -99,11 +116,13 @@ export interface AppearanceConfig {
 export type MessageToBackground =
   | AnalyzeRequest
   | ValidateProviderRequest
-  | GetConfigRequest;
+  | GetConfigRequest
+  | FetchModelsRequest;
 
 export type MessageFromBackground =
   | AnalyzeChunk
   | AnalyzeComplete
   | AnalyzeError
   | ValidateProviderResult
-  | ConfigResult;
+  | ConfigResult
+  | FetchModelsResult;

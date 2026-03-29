@@ -1,7 +1,9 @@
 import { getConfig } from '../shared/storage';
 import { createProvider } from '../providers/provider-factory';
 import { buildAnalysisMessages } from '../prompts/grammar-analysis';
-import type { ExtensionConfig } from '../shared/messages';
+import { GitHubModelsProvider } from '../providers/github-models';
+import { FALLBACK_GITHUB_MODELS } from '../shared/config';
+import type { ExtensionConfig, FetchModelsResult } from '../shared/messages';
 
 const PORT_NAME = 'yomitan-companion-analysis';
 
@@ -23,13 +25,17 @@ chrome.runtime.onConnect.addListener((port) => {
 
 // One-shot message requests (config, validation)
 chrome.runtime.onMessage.addListener(
-  (msg: { type: string }, _sender, sendResponse) => {
+  (msg: { type: string; payload?: Record<string, unknown> }, _sender, sendResponse) => {
     if (msg.type === 'VALIDATE_PROVIDER') {
       handleValidateProvider().then(sendResponse);
       return true; // keep channel open for async response
     }
     if (msg.type === 'GET_CONFIG') {
       handleGetConfig().then(sendResponse);
+      return true;
+    }
+    if (msg.type === 'FETCH_MODELS') {
+      handleFetchModels(msg.payload?.token as string | undefined).then(sendResponse);
       return true;
     }
     return false;
@@ -106,6 +112,26 @@ async function handleValidateProvider(): Promise<{
 /** Return the full extension config for the caller. */
 async function handleGetConfig(): Promise<ExtensionConfig> {
   return getConfig();
+}
+
+/** Fetch available models from the GitHub catalog API. */
+async function handleFetchModels(
+  requestToken?: string,
+): Promise<FetchModelsResult['payload']> {
+  try {
+    const config = await getConfig();
+    const token = requestToken || config.provider.githubModels?.token;
+    if (!token) {
+      return { models: [...FALLBACK_GITHUB_MODELS], error: 'No GitHub token configured' };
+    }
+    const models = await GitHubModelsProvider.fetchAvailableModels(token);
+    return { models };
+  } catch (error) {
+    return {
+      models: [...FALLBACK_GITHUB_MODELS],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 /** Determine if an error is transient and worth retrying. */

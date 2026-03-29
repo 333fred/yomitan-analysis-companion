@@ -3,6 +3,14 @@ import { GITHUB_MODELS_ENDPOINT } from '../shared/config';
 import type { ILLMProvider, LLMRequest, LLMResponse } from './types';
 import { parseCompletionResponse, readSSEStream } from './sse-stream';
 
+export interface GitHubModel {
+  id: string;
+  name: string;
+  publisher: string;
+  capabilities: string[];
+  rateLimitTier: string;
+}
+
 export class GitHubModelsProvider implements ILLMProvider {
   readonly name = 'github-models';
   private readonly token: string;
@@ -108,6 +116,30 @@ export class GitHubModelsProvider implements ILLMProvider {
       max_tokens: request.maxTokens ?? 2048,
       stream,
     };
+  }
+
+  static async fetchAvailableModels(token: string): Promise<GitHubModel[]> {
+    const res = await fetch('https://models.github.ai/catalog/models', {
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'Authorization': `Bearer ${token}`,
+      },
+    });
+    if (!res.ok) throw new Error(`Failed to fetch models: ${res.status}`);
+    const models = await res.json();
+    return models
+      .filter(
+        (m: any) =>
+          m.supported_input_modalities?.includes('text') &&
+          m.supported_output_modalities?.includes('text'),
+      )
+      .map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        publisher: m.publisher,
+        capabilities: m.capabilities ?? [],
+        rateLimitTier: m.rate_limit_tier ?? 'unknown',
+      }));
   }
 
   private async buildErrorResponse(res: Response): Promise<LLMResponse> {

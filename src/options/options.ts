@@ -1,4 +1,5 @@
 import { getConfig, setConfig } from '../shared/storage';
+import { FALLBACK_GITHUB_MODELS } from '../shared/config';
 import type {
   ExtensionConfig,
   ProviderConfig,
@@ -27,6 +28,8 @@ const openaiModel = $<HTMLInputElement>('openai-model');
 const explanationLanguage = $<HTMLSelectElement>('explanation-language');
 const detailLevel = $<HTMLSelectElement>('detail-level');
 const theme = $<HTMLSelectElement>('theme');
+
+const refreshModelsBtn = $<HTMLButtonElement>('refresh-models-btn');
 
 const validateBtn = $<HTMLButtonElement>('validate-btn');
 const validateStatus = $<HTMLSpanElement>('validate-status');
@@ -65,6 +68,90 @@ function showStatus(
   }
 }
 
+// ── Dynamic model loading ───────────────────────────────────────────
+
+type ModelInfo = { id: string; name: string; publisher: string };
+
+function populateModelSelect(
+  models: readonly ModelInfo[],
+  selectedId?: string,
+): void {
+  githubModel.innerHTML = '';
+
+  // Group by publisher
+  const grouped = new Map<string, ModelInfo[]>();
+  for (const m of models) {
+    const list = grouped.get(m.publisher) ?? [];
+    list.push(m);
+    grouped.set(m.publisher, list);
+  }
+
+  // Sort publishers alphabetically, then models by name within each group
+  const publishers = [...grouped.keys()].sort();
+
+  if (publishers.length <= 1) {
+    // Flat list when there is only one publisher
+    const list = publishers.length === 1 ? grouped.get(publishers[0])! : [];
+    for (const m of list.sort((a, b) => a.name.localeCompare(b.name))) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = `${m.name} (${m.publisher})`;
+      githubModel.appendChild(opt);
+    }
+  } else {
+    for (const pub of publishers) {
+      const group = document.createElement('optgroup');
+      group.label = pub;
+      for (const m of grouped.get(pub)!.sort((a, b) => a.name.localeCompare(b.name))) {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.name;
+        group.appendChild(opt);
+      }
+      githubModel.appendChild(group);
+    }
+  }
+
+  if (selectedId) {
+    githubModel.value = selectedId;
+  }
+}
+
+async function loadModels(selectedId?: string): Promise<void> {
+  githubModel.disabled = true;
+  refreshModelsBtn.disabled = true;
+  githubModel.innerHTML = '<option value="">Loading models…</option>';
+
+  const token = githubToken.value.trim() || undefined;
+
+  try {
+    const result = await new Promise<{ models: ModelInfo[]; error?: string }>(
+      (resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { type: 'FETCH_MODELS', payload: { token } },
+          (response) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(response);
+            }
+          },
+        );
+      },
+    );
+
+    populateModelSelect(
+      result.models.length > 0 ? result.models : FALLBACK_GITHUB_MODELS,
+      selectedId,
+    );
+  } catch {
+    populateModelSelect(FALLBACK_GITHUB_MODELS, selectedId);
+  } finally {
+    githubModel.disabled = false;
+    refreshModelsBtn.disabled = false;
+  }
+}
+
 // ── Populate form from stored config ────────────────────────────────
 
 async function loadSettings(): Promise<void> {
@@ -78,7 +165,7 @@ async function loadSettings(): Promise<void> {
 
   // GitHub Models
   githubToken.value = config.provider.githubModels?.token ?? '';
-  githubModel.value = config.provider.githubModels?.model ?? 'openai/gpt-4.1';
+  await loadModels(config.provider.githubModels?.model ?? 'openai/gpt-4.1');
 
   // OpenAI-compatible
   openaiUrl.value = config.provider.openaiCompatible?.baseUrl ?? '';
@@ -130,6 +217,19 @@ for (const radio of providerRadios) {
     showProviderPanel(getSelectedProvider());
   });
 }
+
+refreshModelsBtn.addEventListener('click', () => {
+  loadModels(githubModel.value);
+});
+
+// Reload model list when the token changes (debounced)
+let tokenDebounce: ReturnType<typeof setTimeout> | undefined;
+githubToken.addEventListener('input', () => {
+  clearTimeout(tokenDebounce);
+  tokenDebounce = setTimeout(() => {
+    loadModels(githubModel.value);
+  }, 800);
+});
 
 validateBtn.addEventListener('click', async () => {
   // Save current values first so the background reads the latest config
