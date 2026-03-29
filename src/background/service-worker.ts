@@ -1,6 +1,7 @@
 import { getConfig } from '../shared/storage';
 import { createProvider } from '../providers/provider-factory';
 import { buildAnalysisMessages } from '../prompts/grammar-analysis';
+import { tokenize, formatTokensForPrompt } from '../tokenizer/kuromoji-tokenizer';
 import { GitHubModelsProvider } from '../providers/github-models';
 import { FALLBACK_GITHUB_MODELS } from '../shared/config';
 import type { ExtensionConfig, FetchModelsResult } from '../shared/messages';
@@ -83,10 +84,21 @@ async function handleAnalysisRequest(
     }
 
     const provider = createProvider(config.provider);
+
+    // Tokenize the sentence for morphological grounding
+    let tokenTable: string | undefined;
+    try {
+      const tokens = await tokenize(payload.sentence);
+      tokenTable = formatTokensForPrompt(tokens);
+    } catch (err) {
+      console.warn('[YomitanCompanion:SW] Tokenization failed, proceeding without:', err);
+    }
+
     const messages = buildAnalysisMessages(
       payload.word,
       payload.sentence,
       config.analysis.detailLevel,
+      tokenTable,
     );
 
     const result = await provider.streamRequest({ messages }, (chunk) => {

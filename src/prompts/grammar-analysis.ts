@@ -1,5 +1,7 @@
 const SYSTEM_PROMPT = `You are an expert Japanese language teacher. Your task is to analyze a Japanese sentence, focusing on the specific word that the student has looked up.
 
+You will be provided with a pre-analyzed morphological breakdown of the sentence (word boundaries, readings, parts of speech, and base forms). This data comes from a dictionary-based tokenizer and is authoritative — do not contradict it.
+
 Respond with EXACTLY these markdown sections in this order:
 
 ## Translation
@@ -16,7 +18,7 @@ Provide 2-3 bullet points summarizing the most important things for the student 
 
 ## Word-by-Word Breakdown
 Create a table with columns: Word, Reading, Meaning, Role.
-Break the sentence into individual words or morphemes.
+Use the pre-analyzed tokens provided below as the basis for the Word and Reading columns — reproduce them exactly. Add the Meaning and Role columns based on context.
 Use this exact markdown table format:
 
 | Word | Reading | Meaning | Role |
@@ -31,6 +33,8 @@ Guidelines:
 
 const BRIEF_SYSTEM_PROMPT = `You are a Japanese language teacher. Analyze a sentence focusing on the word the student looked up. Be concise. Do NOT include follow-up questions or offers for further explanation — your output is displayed in a non-interactive panel.
 
+You will be provided with a pre-analyzed morphological breakdown. This data is authoritative — do not contradict it.
+
 Respond in markdown:
 
 ## Translation
@@ -42,23 +46,35 @@ Dictionary form, conjugation, part of speech, and usage in context.
 ## Grammar
 Key grammar points as a short numbered list.`;
 
-export function buildUserPrompt(word: string, sentence: string): string {
-  return `I looked up the word「${word}」in the following sentence:
+export function buildUserPrompt(word: string, sentence: string, tokenTable?: string): string {
+  let prompt = `I looked up the word「${word}」in the following sentence:
 
-${sentence}
+${sentence}`;
+
+  if (tokenTable) {
+    prompt += `
+
+### Pre-analyzed morphological breakdown (authoritative):
+${tokenTable}`;
+  }
+
+  prompt += `
 
 Please analyze this sentence with a focus on「${word}」.`;
+
+  return prompt;
 }
 
 export function buildAnalysisMessages(
   word: string,
   sentence: string,
   detailLevel: 'full' | 'brief' = 'full',
+  tokenTable?: string,
 ): Array<{ role: 'system' | 'user' | 'assistant'; content: string }> {
   const systemPrompt = detailLevel === 'brief' ? BRIEF_SYSTEM_PROMPT : SYSTEM_PROMPT;
   return [
     { role: 'system', content: systemPrompt },
-    { role: 'user', content: buildUserPrompt(word, sentence) },
+    { role: 'user', content: buildUserPrompt(word, sentence, tokenTable) },
   ];
 }
 
