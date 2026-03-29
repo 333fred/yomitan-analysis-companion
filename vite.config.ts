@@ -1,18 +1,20 @@
-import { defineConfig } from 'vite';
+import { defineConfig, build as viteBuild } from 'vite';
 import { resolve } from 'path';
 import { readFileSync, writeFileSync, cpSync } from 'fs';
 
 const srcDir = resolve(__dirname, 'src');
+const distDir = resolve(__dirname, 'dist');
 
 export default defineConfig({
   root: srcDir,
   build: {
-    outDir: resolve(__dirname, 'dist'),
+    outDir: distDir,
     emptyOutDir: true,
     sourcemap: process.env.NODE_ENV === 'development',
     rollupOptions: {
+      // Content script is built separately as IIFE (see plugin below)
+      // because Chrome content scripts don't support ES module imports.
       input: {
-        'content/index': resolve(srcDir, 'content/index.ts'),
         'background/service-worker': resolve(srcDir, 'background/service-worker.ts'),
         options: resolve(srcDir, 'options/options.html'),
       },
@@ -25,10 +27,34 @@ export default defineConfig({
   },
   plugins: [
     {
+      name: 'build-content-script-iife',
+      async closeBundle() {
+        // Content scripts run as classic scripts in Chrome — no ES module
+        // support. Build as a self-contained IIFE so all dependencies are
+        // inlined and there are no import statements.
+        await viteBuild({
+          configFile: false,
+          root: srcDir,
+          logLevel: 'warn',
+          build: {
+            outDir: distDir,
+            emptyOutDir: false,
+            copyPublicDir: false,
+            sourcemap: process.env.NODE_ENV === 'development',
+            rollupOptions: {
+              input: resolve(srcDir, 'content/index.ts'),
+              output: {
+                format: 'iife',
+                entryFileNames: 'content/index.js',
+              },
+            },
+          },
+        });
+      },
+    },
+    {
       name: 'chrome-extension-assets',
       closeBundle() {
-        const distDir = resolve(__dirname, 'dist');
-        // Copy manifest.json with .ts paths replaced by .js
         const raw = readFileSync(resolve(srcDir, 'manifest.json'), 'utf-8');
         const manifest = JSON.parse(raw);
         manifest.content_scripts[0].js = ['content/index.js'];
@@ -37,7 +63,6 @@ export default defineConfig({
           resolve(distDir, 'manifest.json'),
           JSON.stringify(manifest, null, 2),
         );
-        // Copy icons from public/
         cpSync(
           resolve(__dirname, 'public/icons'),
           resolve(distDir, 'icons'),
