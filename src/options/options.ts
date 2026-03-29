@@ -45,7 +45,15 @@ const saveStatus = $<HTMLSpanElement>('save-status');
 
 /** Encoded model value: "providerType::modelId" */
 const MODEL_SEP = '::';
-type ModelEntry = { provider: ProviderConfig['type']; id: string; name: string };
+type ModelEntry = {
+  provider: ProviderConfig['type'];
+  id: string;
+  name: string;
+  summary?: string;
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
+  tags?: string[];
+};
 
 function encodeModelValue(provider: ProviderConfig['type'], modelId: string): string {
   return `${provider}${MODEL_SEP}${modelId}`;
@@ -84,6 +92,9 @@ function showStatus(
 /** Cached GitHub catalog models for the current token. */
 let cachedGithubModels: ModelEntry[] | null = null;
 
+/** Metadata lookup for the currently-displayed models. */
+let modelMetadata = new Map<string, ModelEntry>();
+
 async function fetchGithubModels(): Promise<ModelEntry[]> {
   const token = githubToken.value.trim();
   if (!token) return [];
@@ -102,10 +113,14 @@ async function fetchGithubModels(): Promise<ModelEntry[]> {
     );
 
     const models = result.models.length > 0 ? result.models : [...FALLBACK_GITHUB_MODELS];
-    return models.map((m) => ({
+    return models.map((m: any) => ({
       provider: 'github-models' as const,
       id: m.id,
       name: `${m.name} (${m.publisher})`,
+      summary: m.summary,
+      maxInputTokens: m.maxInputTokens,
+      maxOutputTokens: m.maxOutputTokens,
+      tags: m.tags,
     }));
   } catch {
     return [...FALLBACK_GITHUB_MODELS].map((m) => ({
@@ -122,6 +137,9 @@ function getAnthropicModels(): ModelEntry[] {
     provider: 'anthropic' as const,
     id: m.id,
     name: m.name,
+    summary: m.summary,
+    maxInputTokens: m.maxInputTokens,
+    maxOutputTokens: m.maxOutputTokens,
   }));
 }
 
@@ -159,18 +177,24 @@ async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
   if (customModels.length > 0) groups.push({ label: 'Custom Endpoint', models: customModels });
 
   if (groups.length === 0) {
+    modelMetadata.clear();
     unifiedModel.innerHTML = '<option value="">Configure a provider above…</option>';
     unifiedModel.disabled = false;
     refreshModelsBtn.disabled = false;
+    updateModelInfo();
     return;
   }
 
+  // Build metadata map and dropdown
+  modelMetadata = new Map();
   for (const group of groups) {
     const optgroup = document.createElement('optgroup');
     optgroup.label = group.label;
     for (const m of group.models) {
+      const val = encodeModelValue(m.provider, m.id);
+      modelMetadata.set(val, m);
       const opt = document.createElement('option');
-      opt.value = encodeModelValue(m.provider, m.id);
+      opt.value = val;
       opt.textContent = m.name;
       optgroup.appendChild(opt);
     }
@@ -185,6 +209,48 @@ async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
 
   unifiedModel.disabled = false;
   refreshModelsBtn.disabled = false;
+  updateModelInfo();
+}
+
+/** Format a token count as a readable string (e.g., 1048576 → "1M"). */
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K`;
+  return String(n);
+}
+
+/** Update the model-info panel below the dropdown with the selected model's details. */
+function updateModelInfo(): void {
+  const infoEl = document.getElementById('model-info');
+  if (!infoEl) return;
+
+  const entry = modelMetadata.get(unifiedModel.value);
+  if (!entry || (!entry.summary && !entry.maxInputTokens)) {
+    infoEl.hidden = true;
+    return;
+  }
+
+  const parts: string[] = [];
+  if (entry.summary) {
+    parts.push(`<span class="model-info-summary">${escapeHtml(entry.summary)}</span>`);
+  }
+
+  const stats: string[] = [];
+  if (entry.maxInputTokens) stats.push(`Context: ${formatTokens(entry.maxInputTokens)}`);
+  if (entry.maxOutputTokens) stats.push(`Max output: ${formatTokens(entry.maxOutputTokens)}`);
+  if (entry.tags && entry.tags.length > 0) {
+    stats.push(entry.tags.map((t) => `<span class="model-tag">${escapeHtml(t)}</span>`).join(' '));
+  }
+  if (stats.length > 0) {
+    parts.push(`<span class="model-info-stats">${stats.join(' · ')}</span>`);
+  }
+
+  infoEl.innerHTML = parts.join('');
+  infoEl.hidden = false;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // ── Populate form from stored config ────────────────────────────────
@@ -284,6 +350,8 @@ refreshModelsBtn.addEventListener('click', () => {
   cachedGithubModels = null;
   rebuildModelDropdown();
 });
+
+unifiedModel.addEventListener('change', updateModelInfo);
 
 validateBtn.addEventListener('click', async () => {
   const config = gatherConfig();

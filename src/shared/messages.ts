@@ -80,7 +80,15 @@ export interface FetchModelsRequest {
 export interface FetchModelsResult {
   type: typeof MESSAGE_TYPES.FETCH_MODELS_RESULT;
   payload: {
-    models: Array<{ id: string; name: string; publisher: string }>;
+    models: Array<{
+      id: string;
+      name: string;
+      publisher: string;
+      summary?: string;
+      tags?: string[];
+      maxInputTokens?: number;
+      maxOutputTokens?: number;
+    }>;
     error?: string;
   };
 }

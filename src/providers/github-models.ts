@@ -7,6 +7,8 @@ export interface GitHubModel {
   id: string;
   name: string;
   publisher: string;
+  summary?: string;
+  tags?: string[];
   capabilities: string[];
   rateLimitTier: string;
   maxInputTokens?: number;
@@ -168,6 +170,8 @@ export class GitHubModelsProvider implements ILLMProvider {
         id: m.id,
         name: m.name,
         publisher: m.publisher,
+        summary: m.summary as string | undefined,
+        tags: m.tags as string[] | undefined,
         capabilities: m.capabilities ?? [],
         rateLimitTier: m.rate_limit_tier ?? 'unknown',
         maxInputTokens: m.limits?.max_input_tokens as number | undefined,

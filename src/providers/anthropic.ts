@@ -6,10 +6,38 @@ const STREAM_INACTIVITY_TIMEOUT_MS = 60_000;
 
 /** Well-known Anthropic models available for direct API access. */
 export const ANTHROPIC_MODELS = [
-  { id: 'claude-opus-4-6', name: 'Claude Opus 4.6', tier: 'premium' },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', tier: 'standard' },
-  { id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5', tier: 'standard' },
-  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', tier: 'fast' },
+  {
+    id: 'claude-opus-4-6',
+    name: 'Claude Opus 4.6',
+    tier: 'premium',
+    summary: 'Most capable model — best for complex reasoning, analysis, and multi-step tasks',
+    maxInputTokens: 1_000_000,
+    maxOutputTokens: 128_000,
+  },
+  {
+    id: 'claude-sonnet-4-6',
+    name: 'Claude Sonnet 4.6',
+    tier: 'standard',
+    summary: 'Balanced performance and speed — great for everyday coding and text tasks',
+    maxInputTokens: 1_000_000,
+    maxOutputTokens: 64_000,
+  },
+  {
+    id: 'claude-sonnet-4-5',
+    name: 'Claude Sonnet 4.5',
+    tier: 'standard',
+    summary: 'High intelligence with strong coding and reasoning, extended thinking support',
+    maxInputTokens: 1_000_000,
+    maxOutputTokens: 64_000,
+  },
+  {
+    id: 'claude-haiku-4-5',
+    name: 'Claude Haiku 4.5',
+    tier: 'fast',
+    summary: 'Fastest Claude model — ideal for quick responses and cost-sensitive use',
+    maxInputTokens: 200_000,
+    maxOutputTokens: 64_000,
+  },
 ] as const;
 
 /**

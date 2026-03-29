@@ -111,6 +111,42 @@ h1 {
   margin-bottom: 0.75rem;
 }
 
+.model-info {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  background: #f0f4ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.model-info[hidden] {
+  display: none;
+}
+
+.model-info-summary {
+  color: #374151;
+}
+
+.model-info-stats {
+  color: #6b7280;
+  font-size: 0.78rem;
+}
+
+.model-tag {
+  display: inline-block;
+  background: #e0e7ff;
+  color: #3730a3;
+  padding: 0.05em 0.4em;
+  border-radius: 3px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
 .provider-selector {
   display: flex;
   flex-direction: column;
