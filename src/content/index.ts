@@ -16,6 +16,15 @@ let cancelStream: (() => void) | null = null;
 let isAnalyzing = false;
 let lastSentenceData: SentenceData | null = null;
 
+/** Sentence captured eagerly when the popup first appears, before the user
+ *  has a chance to click our button (which dismisses Yomitan's popup and
+ *  deselects the text). */
+let preCapturedSentence: SentenceData | null = null;
+
+/** Grace-period timer that keeps the button visible after Yomitan hides. */
+let hideGraceTimer: number | null = null;
+const HIDE_GRACE_MS = 3000;
+
 // ── Orchestration ───────────────────────────────────────────────────────
 
 function handlePopupEvent(event: YomitanPopupEvent): void {
@@ -35,24 +44,38 @@ function handlePopupEvent(event: YomitanPopupEvent): void {
 function onPopupShown(event: YomitanPopupEvent): void {
   if (!event.rect) return;
 
+  cancelHideGrace();
+  cancelCurrentAnalysis();
   ensureMounted();
 
-  // Detect and apply theme
   const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
   panelHost.setTheme(isDark ? 'dark' : 'light');
 
-  const button = panelHost.getButton();
-  button.show();
+  // Hide stale analysis from a previous lookup
+  panelHost.getPanel().hide();
+
+  // Pre-capture sentence while the hovered text is still accessible.
+  // Clicking our button will dismiss Yomitan and deselect the text,
+  // so we must grab the data now.
+  preCapturedSentence = extractor.extractSentence();
+
+  panelHost.getButton().show();
   panelHost.positionRelativeTo(event.rect);
 }
 
 function onPopupHidden(): void {
-  const button = panelHost.getButton();
-  const panel = panelHost.getPanel();
+  // While an analysis is running or results are displayed, keep UI visible
+  if (isAnalyzing) return;
 
-  button.hide();
-  panel.hide();
-  cancelCurrentAnalysis();
+  // Keep the button visible briefly so the user can still reach it after
+  // Yomitan auto-dismisses (mouse-leave or click-outside behaviour).
+  cancelHideGrace();
+  hideGraceTimer = window.setTimeout(() => {
+    panelHost.getButton().hide();
+    panelHost.getPanel().hide();
+    preCapturedSentence = null;
+    hideGraceTimer = null;
+  }, HIDE_GRACE_MS);
 }
 
 function onPopupRepositioned(event: YomitanPopupEvent): void {
@@ -68,6 +91,13 @@ function ensureMounted(): void {
   mounted = true;
 }
 
+function cancelHideGrace(): void {
+  if (hideGraceTimer !== null) {
+    clearTimeout(hideGraceTimer);
+    hideGraceTimer = null;
+  }
+}
+
 function cancelCurrentAnalysis(): void {
   if (cancelStream) {
     cancelStream();
@@ -81,11 +111,16 @@ function cancelCurrentAnalysis(): void {
 function onAnalyzeClick(): void {
   if (isAnalyzing) return;
 
-  const data: SentenceData | null = extractor.extractSentence();
+  cancelHideGrace();
+
+  // Try live extraction first (in case user manually selected text),
+  // then fall back to the data we captured when the popup appeared.
+  const data = extractor.extractSentence() ?? preCapturedSentence;
   if (!data) {
     console.warn(LOG_PREFIX, 'Could not extract sentence from page');
-    const panel = panelHost.getPanel();
-    panel.showError('Could not extract sentence. Try selecting text first.', false);
+    panelHost.getPanel().showError(
+      'Could not extract sentence. Try selecting text first.', false,
+    );
     return;
   }
 
