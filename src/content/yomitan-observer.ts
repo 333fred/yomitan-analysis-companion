@@ -178,9 +178,10 @@ export class YomitanObserver {
     // Search near the mouse cursor (where Yomitan typically shows)
     const hit = this.findPopupHitPoint(container);
     if (hit) {
-      this.cancelHideTimer();
       const rect = this.probePopupBounds(hit[0], hit[1]);
       if (rect.width >= MIN_POPUP_SIZE_PX && rect.height >= MIN_POPUP_SIZE_PX) {
+        // Confirmed visible popup — cancel any pending hide timer
+        this.cancelHideTimer();
         if (!this.popupVisible) {
           this.onPopupShown(rect, container);
         } else if (this.hasRectChanged(rect)) {
@@ -230,20 +231,25 @@ export class YomitanObserver {
 
   /**
    * From a known hit point, walk outward to approximate the popup edges.
+   * Probes horizontal edges at the vertical midpoint (and vice versa)
+   * for more accurate bounds regardless of where the initial hit was.
    */
   private probePopupBounds(hitX: number, hitY: number): DOMRect {
     const c = this.trackedContainer;
     const s = EDGE_STEP_PX;
 
+    // First pass: find approximate vertical extent at hitX
     let top = hitY;
     let bottom = hitY;
-    let left = hitX;
-    let right = hitX;
-
     while (top - s >= 0 && document.elementFromPoint(hitX, top - s) === c) top -= s;
     while (bottom + s < window.innerHeight && document.elementFromPoint(hitX, bottom + s) === c) bottom += s;
-    while (left - s >= 0 && document.elementFromPoint(left - s, hitY) === c) left -= s;
-    while (right + s < window.innerWidth && document.elementFromPoint(right + s, hitY) === c) right += s;
+
+    // Probe horizontal extent at the vertical midpoint for consistency
+    const midY = Math.round((top + bottom) / 2);
+    let left = hitX;
+    let right = hitX;
+    while (left - s >= 0 && document.elementFromPoint(left - s, midY) === c) left -= s;
+    while (right + s < window.innerWidth && document.elementFromPoint(right + s, midY) === c) right += s;
 
     return new DOMRect(left, top, right - left, bottom - top);
   }
