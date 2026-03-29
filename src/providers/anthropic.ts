@@ -133,6 +133,7 @@ export class AnthropicProvider implements ILLMProvider {
       'Content-Type': 'application/json',
       'x-api-key': this.apiKey,
       'anthropic-version': ANTHROPIC_VERSION,
+      'anthropic-dangerous-direct-browser-access': 'true',
     };
   }
 
