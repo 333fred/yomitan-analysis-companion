@@ -109,13 +109,16 @@ export class GitHubModelsProvider implements ILLMProvider {
     request: LLMRequest,
     stream: boolean,
   ): Record<string, unknown> {
-    return {
+    const body: Record<string, unknown> = {
       model: request.model ?? this.model,
       messages: request.messages,
-      temperature: request.temperature ?? 0.3,
       max_completion_tokens: request.maxTokens ?? 2048,
       stream,
     };
+    if (request.temperature !== undefined) {
+      body.temperature = request.temperature;
+    }
+    return body;
   }
 
   static async fetchAvailableModels(token: string): Promise<GitHubModel[]> {

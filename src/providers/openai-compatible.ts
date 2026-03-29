@@ -116,13 +116,16 @@ export class OpenAICompatibleProvider implements ILLMProvider {
     request: LLMRequest,
     stream: boolean,
   ): Record<string, unknown> {
-    return {
+    const body: Record<string, unknown> = {
       model: request.model ?? this.model,
       messages: request.messages,
-      temperature: request.temperature ?? 0.3,
       max_completion_tokens: request.maxTokens ?? 2048,
       stream,
     };
+    if (request.temperature !== undefined) {
+      body.temperature = request.temperature;
+    }
+    return body;
   }
 
   private async buildErrorResponse(res: Response): Promise<LLMResponse> {
