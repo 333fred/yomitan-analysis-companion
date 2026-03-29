@@ -3,6 +3,12 @@ import { SectionRenderer } from './section-renderer';
 const SHIMMER_LINE_COUNT = 5;
 const MIN_WIDTH = 350;
 const MAX_WIDTH = 600;
+const MAX_PANEL_HEIGHT = 400;
+const MIN_USABLE_HEIGHT = 150;
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(v, hi));
+}
 
 export class CompanionPanel {
   private container: HTMLDivElement | null = null;
@@ -31,16 +37,39 @@ export class CompanionPanel {
     const gap = 4;
 
     const width = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, popupRect.width + 20));
-    const left = popupRect.left + (popupRect.width - width) / 2;
-    const top = buttonRect.bottom + gap;
+    const left = clamp(
+      popupRect.left + (popupRect.width - width) / 2,
+      gap, vw - width - gap,
+    );
 
     this.container.style.width = `${width}px`;
-    this.container.style.left = `${Math.max(gap, Math.min(left, vw - width - gap))}px`;
-    this.container.style.top = `${top}px`;
+    this.container.style.left = `${left}px`;
 
-    // Shrink max-height so the panel doesn't extend below the viewport
-    const available = vh - top - gap;
-    this.container.style.maxHeight = `${Math.max(150, Math.min(400, available))}px`;
+    const spaceBelow = vh - buttonRect.bottom - gap;
+    const spaceAbove = popupRect.top - gap;
+
+    if (spaceBelow >= MIN_USABLE_HEIGHT) {
+      // Below button (preferred)
+      this.container.style.top = `${buttonRect.bottom + gap}px`;
+      this.container.style.transform = '';
+      this.container.style.maxHeight = `${Math.min(MAX_PANEL_HEIGHT, spaceBelow)}px`;
+    } else if (spaceAbove >= MIN_USABLE_HEIGHT) {
+      // Above popup — anchor bottom edge just above the popup using translateY
+      this.container.style.top = `${popupRect.top - gap}px`;
+      this.container.style.transform = 'translateY(-100%)';
+      this.container.style.maxHeight = `${Math.min(MAX_PANEL_HEIGHT, spaceAbove)}px`;
+    } else {
+      // Tight — use whichever side is bigger
+      if (spaceBelow >= spaceAbove) {
+        this.container.style.top = `${buttonRect.bottom + gap}px`;
+        this.container.style.transform = '';
+        this.container.style.maxHeight = `${Math.max(100, spaceBelow)}px`;
+      } else {
+        this.container.style.top = `${popupRect.top - gap}px`;
+        this.container.style.transform = 'translateY(-100%)';
+        this.container.style.maxHeight = `${Math.max(100, spaceAbove)}px`;
+      }
+    }
   }
 
   show(): void {

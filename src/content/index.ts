@@ -44,6 +44,11 @@ function handlePopupEvent(event: YomitanPopupEvent): void {
 function onPopupShown(event: YomitanPopupEvent): void {
   if (!event.rect) return;
 
+  // If the analysis panel is visible, ignore popup events — hovering over
+  // Japanese text inside our panel triggers Yomitan, and we don't want
+  // that to reposition or disrupt the current analysis.
+  if (panelHost.isPanelVisible()) return;
+
   cancelHideGrace();
   ensureMounted();
 
@@ -55,15 +60,13 @@ function onPopupShown(event: YomitanPopupEvent): void {
   // so we must grab the data now.
   preCapturedSentence = extractor.extractSentence();
 
-  // Don't cancel a running analysis or hide results — the user may still
-  // be reading the panel while Yomitan re-detects on a nearby word.
   panelHost.getButton().show();
   panelHost.positionRelativeTo(event.rect);
 }
 
 function onPopupHidden(): void {
   // While an analysis is running or results are displayed, keep UI visible
-  if (isAnalyzing) return;
+  if (isAnalyzing || panelHost.isPanelVisible()) return;
 
   // Keep the button visible briefly so the user can still reach it after
   // Yomitan auto-dismisses (mouse-leave or click-outside behaviour).
@@ -78,6 +81,8 @@ function onPopupHidden(): void {
 
 function onPopupRepositioned(event: YomitanPopupEvent): void {
   if (!event.rect) return;
+  // Don't reposition while the panel is showing analysis results
+  if (panelHost.isPanelVisible()) return;
   panelHost.positionRelativeTo(event.rect);
 }
 
@@ -86,7 +91,31 @@ function ensureMounted(): void {
 
   panelHost.mount();
   panelHost.getButton().onClick(onAnalyzeClick);
+  setupClickOutsideDismiss();
   mounted = true;
+}
+
+/** Dismiss analysis panel + reset button when clicking outside our UI. */
+function setupClickOutsideDismiss(): void {
+  document.addEventListener('mousedown', (e: MouseEvent) => {
+    if (!panelHost.isPanelVisible()) return;
+
+    const path = e.composedPath();
+    if (panelHost.containsEventTarget(path)) return;
+
+    // Click was outside — dismiss
+    dismissUI();
+  }, true);
+}
+
+/** Fully dismiss our UI (cancel analysis, hide everything, reset state). */
+function dismissUI(): void {
+  cancelCurrentAnalysis();
+  cancelHideGrace();
+  panelHost.getButton().hide();
+  panelHost.getPanel().hide();
+  preCapturedSentence = null;
+  lastSentenceData = null;
 }
 
 function cancelHideGrace(): void {

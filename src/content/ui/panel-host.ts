@@ -84,4 +84,15 @@ export class PanelHost {
       this.panel.position(popupRect, btnRect);
     }
   }
+
+  /** Check whether a DOM event path includes our shadow host. */
+  containsEventTarget(composedPath: EventTarget[]): boolean {
+    return this.hostElement !== null && composedPath.includes(this.hostElement);
+  }
+
+  /** Whether the analysis panel is currently visible. */
+  isPanelVisible(): boolean {
+    const el = this.panel.getElement();
+    return el !== null && !el.classList.contains('ycc-hidden');
+  }
 }
