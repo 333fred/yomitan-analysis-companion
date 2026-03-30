@@ -14,7 +14,8 @@
   ],
   "host_permissions": [
     "https://models.github.ai/*",
-    "https://api.anthropic.com/*"
+    "https://api.anthropic.com/*",
+    "https://cdn.jsdelivr.net/*"
   ],
   "optional_host_permissions": [
     "https://*/*",
