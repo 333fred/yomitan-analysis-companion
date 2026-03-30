@@ -69,4 +69,4 @@ If this privacy policy is updated, the changes will be reflected in this file wi
 
 ## Contact
 
-If you have questions about this privacy policy, please open an issue on the [GitHub repository](https://github.com/nicka/yomitan-copilot-companion).
+If you have questions about this privacy policy, please open an issue on the [GitHub repository](https://github.com/333fred/yomitan-analysis-companion).
