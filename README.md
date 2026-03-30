@@ -153,6 +153,17 @@ npm run build    # Production build → dist/
 
 After building, the `dist` folder contains the complete extension. Reload the extension in `chrome://extensions` to pick up changes.
 
+### Regenerating Icons
+
+The extension icons are generated from a Python script. Requires [Pillow](https://pypi.org/project/Pillow/) and a Japanese font (Yu Gothic, Meiryo, or MS Gothic — standard on Windows).
+
+```bash
+pip install Pillow
+python generate-icons.py
+```
+
+This outputs `icon-16.png`, `icon-48.png`, and `icon-128.png` into `public/icons/`.
+
 ## Adding a New AI Provider
 
 The provider system uses a simple adapter pattern:
