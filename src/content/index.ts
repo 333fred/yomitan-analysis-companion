@@ -31,13 +31,15 @@ let lastSentenceData: SentenceData | null = null;
 let preCapturedSentence: SentenceData | null = null;
 let scrollHandler: (() => void) | null = null;
 let pointerHandler: ((e: PointerEvent) => void) | null = null;
+let selectionChangeHandler: (() => void) | null = null;
 
 /** Grace-period timer that keeps the button visible after Yomitan hides. */
 let hideGraceTimer: number | null = null;
 const HIDE_GRACE_MS = 1500;
 
-/** Latched text rect top from the selection when the popup first appeared. */
+/** Text selection top and last popup rect for stable button positioning. */
 let latchedTextTop: number | undefined;
+let lastPopupRect: DOMRect | null = null;
 
 /** Current model override (null = use default from config). */
 let activeModelOverride: { providerType: string; model: string } | null = null;
@@ -166,6 +168,7 @@ function onPopupShown(event: YomitanPopupEvent): void {
   // selection on the hovered word). This gives us a pixel-accurate anchor
   // to position the button above.
   latchedTextTop = getSelectionTop();
+  lastPopupRect = event.rect;
 
   panelHost.getButton().show();
   panelHost.positionButton(event.rect, latchedTextTop);
@@ -175,6 +178,7 @@ function onPopupHidden(): void {
   // Keep button visible briefly so user can reach it after Yomitan dismisses
   cancelHideGrace();
   latchedTextTop = undefined;
+  lastPopupRect = null;
   hideGraceTimer = window.setTimeout(() => {
     panelHost.getButton().hide();
     hideGraceTimer = null;
@@ -198,10 +202,20 @@ function onPagePointerDown(e: PointerEvent): void {
   panelHost.getButton().hide();
 }
 
+/** Selection changed — update button position if popup is still visible. */
+function onSelectionChange(): void {
+  if (!lastPopupRect) return;
+  const newTop = getSelectionTop();
+  if (newTop !== undefined && newTop !== latchedTextTop) {
+    latchedTextTop = newTop;
+    panelHost.positionButton(lastPopupRect, latchedTextTop);
+    preCapturedSentence = extractor.extractSentence();
+  }
+}
+
 function onPopupRepositioned(event: YomitanPopupEvent): void {
   if (!event.rect) return;
-  // Keep latchedTextTop from the original shown event so the button
-  // doesn't chase the cursor when the user moves toward it.
+  lastPopupRect = event.rect;
   panelHost.positionButton(event.rect, latchedTextTop);
   // Re-capture sentence since the user may be hovering over a different word
   preCapturedSentence = extractor.extractSentence();
@@ -365,6 +379,9 @@ function init(): void {
   pointerHandler = onPagePointerDown;
   document.addEventListener('pointerdown', pointerHandler, { capture: true });
 
+  selectionChangeHandler = onSelectionChange;
+  document.addEventListener('selectionchange', selectionChangeHandler);
+
   console.debug(LOG, 'Content script initialized');
 }
 
@@ -382,6 +399,11 @@ function destroy(): void {
   if (pointerHandler) {
     document.removeEventListener('pointerdown', pointerHandler, { capture: true });
     pointerHandler = null;
+  }
+
+  if (selectionChangeHandler) {
+    document.removeEventListener('selectionchange', selectionChangeHandler);
+    selectionChangeHandler = null;
   }
 
   if (mounted) {
