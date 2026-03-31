@@ -35,8 +35,10 @@ export class AnalyzeButton {
     // When the popup is below the mouse, the text line is near mouseY.
     // Position above the text line rather than above the popup (which
     // would land between the text and the popup, clipping the text).
+    // Add a line-height estimate to clear above the full text line.
+    const textLineClearance = 18;
     const aboveAnchorY = mouseY !== undefined && mouseY < popupRect.top
-      ? mouseY - gap - btnH
+      ? mouseY - textLineClearance - gap - btnH
       : popupRect.top - probeMargin - gap - btnH;
 
     // Preferred: top-left, above the text/popup
