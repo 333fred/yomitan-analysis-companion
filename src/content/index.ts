@@ -36,6 +36,9 @@ let pointerHandler: ((e: PointerEvent) => void) | null = null;
 let hideGraceTimer: number | null = null;
 const HIDE_GRACE_MS = 1500;
 
+/** Latched mouse Y from when the popup first appeared (for stable button positioning). */
+let latchedMouseY: number | undefined;
+
 /** Current model override (null = use default from config). */
 let activeModelOverride: { providerType: string; model: string } | null = null;
 /** Encoded value of the user's default model (from config). */
@@ -151,12 +154,14 @@ function onPopupShown(event: YomitanPopupEvent): void {
   preCapturedSentence = extractor.extractSentence();
 
   panelHost.getButton().show();
-  panelHost.positionButton(event.rect, event.mouseY);
+  latchedMouseY = event.mouseY;
+  panelHost.positionButton(event.rect, latchedMouseY);
 }
 
 function onPopupHidden(): void {
   // Keep button visible briefly so user can reach it after Yomitan dismisses
   cancelHideGrace();
+  latchedMouseY = undefined;
   hideGraceTimer = window.setTimeout(() => {
     panelHost.getButton().hide();
     hideGraceTimer = null;
@@ -182,7 +187,9 @@ function onPagePointerDown(e: PointerEvent): void {
 
 function onPopupRepositioned(event: YomitanPopupEvent): void {
   if (!event.rect) return;
-  panelHost.positionButton(event.rect, event.mouseY);
+  // Keep latchedMouseY from the original shown event so the button
+  // doesn't chase the cursor when the user moves toward it.
+  panelHost.positionButton(event.rect, latchedMouseY);
   // Re-capture sentence since the user may be hovering over a different word
   preCapturedSentence = extractor.extractSentence();
 }
