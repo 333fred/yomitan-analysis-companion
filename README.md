@@ -6,11 +6,15 @@ AI-powered grammar analysis companion for [Yomitan](https://github.com/yomidevs/
 
 When you look up a Japanese word with Yomitan, this companion extension adds an **"✨ Explain"** button near the popup. Click it to get a streaming analysis in a **docked side panel**:
 
+![Explain button appearing above Yomitan's popup](screenshots/Explain%20Button.png)
+
 - **Full sentence translation** — natural English translation of the surrounding sentence
 - **Focus word analysis** — detailed explanation of the specific word you looked up (dictionary form, conjugation, part of speech)
 - **Grammar points** — conjugation rules, particle usage, and sentence patterns explained
 - **Key takeaways** — the most important grammar concepts to remember
 - **Word-by-word breakdown** — every word/morpheme with reading, meaning, and grammatical role
+
+![Sidebar showing a full grammar analysis](screenshots/Explain%20Sidebar.png)
 
 Responses stream in progressively — you see useful output within ~1 second. The side panel persists independently of Yomitan's popup, so you can scroll through the analysis at your own pace.
 
@@ -64,6 +68,8 @@ Then load the extension:
 
 1. Click the extension icon → **Options** (or right-click → Extension options)
 2. Configure one or more providers in the collapsible sections:
+
+![Settings page with provider configuration](screenshots/Settings%20Page.png)
 
 #### GitHub Models (Recommended)
 
