@@ -4,9 +4,11 @@ AI-powered grammar analysis companion for [Yomitan](https://github.com/yomidevs/
 
 ## What It Does
 
-When you look up a Japanese word with Yomitan, this companion extension adds an **"✨ Explain"** button near the popup. Click it to get a streaming analysis in a **docked side panel**:
+When you look up a Japanese word with Yomitan, this companion extension adds an **"✨ Explain"** button near the popup.
 
-![Explain button appearing above Yomitan's popup](screenshots/Explain%20Button.png)
+![Explain button appearing above the hovered word](screenshots/Explain%20Button.png)
+
+Click it to get a streaming analysis in a **docked side panel**:
 
 - **Full sentence translation** — natural English translation of the surrounding sentence
 - **Focus word analysis** — detailed explanation of the specific word you looked up (dictionary form, conjugation, part of speech)
