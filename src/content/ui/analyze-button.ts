@@ -20,7 +20,7 @@ export class AnalyzeButton {
     return btn;
   }
 
-  position(popupRect: DOMRect, mouseY?: number): void {
+  position(popupRect: DOMRect, textTop?: number): void {
     if (!this.element) return;
 
     const btnW = this.element.offsetWidth || 100;
@@ -32,13 +32,10 @@ export class AnalyzeButton {
     // so the real popup can extend up to 20px beyond the probed edges.
     const probeMargin = 20;
 
-    // When the popup is below the mouse, the text line is near mouseY.
-    // Position above the text line rather than above the popup (which
-    // would land between the text and the popup, clipping the text).
-    // Add a line-height estimate to clear above the full text line.
-    const textLineClearance = 18;
-    const aboveAnchorY = mouseY !== undefined && mouseY < popupRect.top
-      ? mouseY - textLineClearance - gap - btnH
+    // If we have the top of the selected text (from the selection range),
+    // position above it. Otherwise fall back to above the popup.
+    const aboveAnchorY = textTop !== undefined
+      ? textTop - gap - btnH
       : popupRect.top - probeMargin - gap - btnH;
 
     // Preferred: top-left, above the text/popup

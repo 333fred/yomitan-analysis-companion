@@ -2,8 +2,6 @@ export interface YomitanPopupEvent {
   type: 'shown' | 'hidden' | 'repositioned';
   rect?: DOMRect;
   container?: HTMLElement;
-  /** Mouse Y at the time the popup was detected (approximates text line). */
-  mouseY?: number;
 }
 
 export type YomitanPopupListener = (event: YomitanPopupEvent) => void;
@@ -204,7 +202,7 @@ export class YomitanObserver {
           this.onPopupShown(rect, container);
         } else if (this.hasRectChanged(rect)) {
           this.lastRect = rect;
-          this.emit({ type: 'repositioned', rect, container, mouseY: this.mouseY });
+          this.emit({ type: 'repositioned', rect, container });
         }
         return;
       }
@@ -289,7 +287,7 @@ export class YomitanObserver {
     this.popupVisible = true;
     this.lastRect = rect;
     console.debug(LOG, 'Popup detected', { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) });
-    this.emit({ type: 'shown', rect, container, mouseY: this.mouseY });
+    this.emit({ type: 'shown', rect, container });
   }
 
   private onPopupHidden(): void {
