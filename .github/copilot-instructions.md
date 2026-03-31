@@ -8,8 +8,9 @@ This is a Chrome/Edge browser extension (Manifest V3) that serves as an AI-power
 
 ### Extension Components
 
-- **Content Script** (`src/content/`): Injected into all web pages. Detects Yomitan's popup via `elementFromPoint` probing, extracts sentence text from the DOM, and renders the companion UI (floating analyze button + docked side panel). Built as a self-contained **IIFE** (no ES module imports) because Chrome content scripts don't support ES modules.
-- **Service Worker** (`src/background/`): Handles AI API calls. Receives analysis requests from content scripts, streams responses back over message ports. Also handles config retrieval, model catalog fetching, and provider validation.
+- **Content Script** (`src/content/`): Injected into all web pages. Detects Yomitan's popup via `elementFromPoint` probing, extracts sentence text from the DOM, and renders the companion UI (floating Explain button + docked side panel). Built as a self-contained **IIFE** (no ES module imports) because Chrome content scripts don't support ES modules.
+- **Service Worker** (`src/background/`): Handles AI API calls. Receives analysis requests from content scripts, tokenizes sentences with kuromoji, streams responses back over message ports. Also handles config retrieval, model catalog fetching, and provider validation.
+- **Tokenizer** (`src/tokenizer/`): Morphological analysis using `@patdx/kuromoji` (IPADic dictionary). Provides deterministic word boundaries, readings, POS tags, and base forms. Dictionary files are fetched from CDN and cached via the Cache API.
 - **Options Page** (`src/options/`): Settings UI for configuring AI providers (multiple simultaneously), model selection, and preferences. Uses a unified model dropdown aggregating models from all configured providers.
 - **Providers** (`src/providers/`): Adapter pattern for AI providers. Each implements the `ILLMProvider` interface. Currently: GitHub Models (OpenAI-format), Anthropic (Messages API), and generic OpenAI-compatible.
 - **Shared** (`src/shared/`): Type definitions, message contracts, storage wrapper, and constants used across all components.
@@ -18,22 +19,24 @@ This is a Chrome/Edge browser extension (Manifest V3) that serves as an AI-power
 
 1. **Yomitan's popup uses a closed Shadow DOM + iframe** — we cannot inject into it or observe its dimensions via the container (which is always 0×0 because the iframe uses `position: fixed` inside the shadow). We detect the popup using `document.elementFromPoint` probing: per the Shadow DOM spec, `elementFromPoint` returns the shadow host for elements inside closed shadows.
 2. **Our UI uses Shadow DOM** (open mode) to isolate styles from the host page.
-3. **Docked side panel** — analysis results display in a fixed-position panel that slides in from the right (or bottom). The panel pushes page content by adding margin to `document.documentElement`. A semi-transparent reopen button appears when the panel is closed.
-4. **Pre-capture pattern** — sentence text is extracted eagerly when Yomitan's popup appears (before the user clicks our button). Clicking the analyze button or moving the mouse to it dismisses Yomitan and deselects text, so live extraction is used as primary with pre-captured data as fallback.
+3. **Docked side panel** — analysis results display in a resizable fixed-position panel that slides in from the right (or bottom). The panel pushes page content by adding margin to `document.documentElement`. Drag the edge to resize. A semi-transparent reopen button appears when the panel is closed. The panel includes the original sentence (with word highlighted) at the top, streaming AI content in the middle, and a model switcher footer at the bottom.
+4. **Pre-capture pattern** — sentence text is extracted eagerly when Yomitan's popup appears (before the user clicks our button). Clicking the Explain button or moving the mouse to it dismisses Yomitan and deselects text, so live extraction is used as primary with pre-captured data as fallback. Pre-captured data is also updated on `selectionchange` events.
 5. **Streaming over ports**: Content script opens a `chrome.runtime.connect()` port for analysis requests. The background streams chunks back over this port.
 6. **API calls happen in the service worker**, not the content script, to avoid CORS issues.
 7. **No UI framework** in the content script — vanilla TypeScript DOM manipulation to keep the injected bundle small (~30KB).
 8. **Two-pass Vite build**: The content script is built separately as IIFE (self-contained, no imports); background + options are built as ES modules with shared chunks.
-9. **Multi-provider model selection**: Users configure credentials for multiple providers simultaneously. A single unified model dropdown aggregates models from all providers, grouped by provider. The selected model determines which provider is used.
+9. **Multi-provider model selection**: Users configure credentials for multiple providers simultaneously. A single unified model dropdown aggregates models from all providers, grouped by provider. The selected model determines which provider is used. The model can also be switched from the sidebar panel footer, which immediately re-runs the analysis.
+10. **Morphological pre-analysis**: Before sending to the AI, sentences are tokenized with kuromoji (IPADic dictionary) to provide deterministic word boundaries, readings, POS tags, and base forms. This data is injected into the prompt as authoritative, so the AI focuses on meaning and grammar explanation rather than guessing morphology.
 
 ### Data Flow
 
 ```
 Page → Content Script (elementFromPoint probing detects Yomitan popup)
      → Pre-capture: Sentence Extractor reads text from page DOM eagerly
-     → User clicks Analyze button
-     → Port message to Service Worker with {word, sentence}
-     → Service Worker creates provider from config, builds prompt
+     → User clicks Explain button
+     → Port message to Service Worker with {word, sentence, modelOverride?}
+     → Service Worker tokenizes sentence with kuromoji (IPADic)
+     → Builds prompt with pre-analyzed morphological data
      → Provider streams AI response (SSE for OpenAI/GitHub, Anthropic events for Claude)
      → Chunks streamed back over port
      → Section Renderer progressively builds HTML in docked side panel
@@ -44,10 +47,15 @@ Page → Content Script (elementFromPoint probing detects Yomitan popup)
 The `YomitanObserver` class uses a polling approach (every 200ms when a container is tracked):
 - Tracks mouse position via `mousemove` listener
 - Probes 16 points in a fan around the mouse cursor
-- If any probe returns the Yomitan container, walks outward in 20px steps to find popup bounds
-- Fast path: if popup is already visible, just verify the center point (prevents jitter)
+- If any probe returns the Yomitan container, walks outward in 20px steps to find popup bounds (two-pass probing at midpoints for stability)
+- Fast path: if popup is already visible and mouse hasn't moved >20px since last probe, just verify the center point. Re-probes when mouse moves significantly to detect popup repositioning.
+- Hide timer only cancelled after popup size check passes (prevents stale container hits from keeping button visible)
 - 500ms grace period before declaring popup hidden
 - `isYomitanContainer` heuristic: checks `el.style.getPropertyValue('all') === 'initial'` && `el.style.getPropertyPriority('all') === 'important'`
+
+### Button Positioning
+
+The Explain button uses `window.getSelection().getRangeAt(0).getBoundingClientRect()` to get the exact bounding rect of Yomitan's text selection, then positions directly above it. The text top is latched on the initial `shown` event and updated on `selectionchange` events, preventing the button from chasing the cursor while still tracking when the user hovers a different word. Fallback cascade: above text → below popup → left → right.
 
 ## Build System
 
@@ -109,14 +117,15 @@ providers/github-models.ts    ← imports from types.ts, sse-stream.ts (+ catalo
 providers/openai-compatible.ts ← imports from types.ts, sse-stream.ts
 providers/anthropic.ts        ← imports from types.ts (own SSE parser for Anthropic format)
 providers/provider-factory.ts ← imports from all providers, storage.ts, messages.ts
-prompts/grammar-analysis.ts   ← system prompts (full + brief variants)
-background/service-worker.ts  ← imports from providers, prompts, shared
+tokenizer/kuromoji-tokenizer.ts ← @patdx/kuromoji (IPADic), POS mapping, Cache API
+prompts/grammar-analysis.ts   ← system prompts (full + brief), accepts pre-analyzed token data
+background/service-worker.ts  ← imports from providers, prompts, tokenizer, shared
 content/yomitan-observer.ts   ← elementFromPoint probing, popup detection
 content/sentence-extractor.ts ← text extraction from DOM
-content/messaging.ts          ← port-based streaming to service worker
+content/messaging.ts          ← port-based streaming to service worker, fetchModels
 content/ui/panel-host.ts      ← Shadow DOM host, button + panel management
-content/ui/companion-panel.ts ← docked side panel (open/close, streaming content)
-content/ui/analyze-button.ts  ← floating button near Yomitan popup
+content/ui/companion-panel.ts ← resizable docked side panel, sentence display, model switcher
+content/ui/analyze-button.ts  ← floating button positioned via selection rect
 content/ui/section-renderer.ts ← markdown → structured HTML sections
 content/ui/styles.ts          ← all CSS for content script UI
 content/index.ts              ← orchestration (imports all content modules)
@@ -159,3 +168,22 @@ options/options.ts            ← imports from shared, providers/anthropic.ts (m
 - Any endpoint following `/chat/completions` format
 - Streaming: SSE with `data: {...}` lines, terminated by `data: [DONE]`
 - Uses `max_completion_tokens` for compatibility with newer models
+
+## Documentation Maintenance
+
+When making changes to the codebase, always check whether documentation needs updating:
+
+### Files to review after changes
+
+- **`README.md`** — Update if changes affect: features, usage instructions, setup steps, project structure, data flow, or the "How It Works" description. Keep screenshots current.
+- **`.github/copilot-instructions.md`** (this file) — Update if changes affect: architecture, component responsibilities, design decisions, data flow, file dependencies, popup detection/positioning behavior, build system, coding standards, or provider API details.
+- **`PRIVACY.md`** — Update if changes affect: what data is collected/sent, which external services are contacted, what permissions are used, or how credentials are stored.
+
+### What to update
+
+- **Architecture sections**: When adding/removing components, modules, or changing how they interact.
+- **Data flow**: When the request/response pipeline changes (e.g., adding a processing step like tokenization).
+- **File dependencies**: When adding new files or changing import relationships.
+- **Design decisions**: When adding significant new patterns or changing existing ones.
+- **Project structure tree**: When adding/renaming/removing source directories or files.
+- **Provider API reference**: When changing how providers are called or adding new providers.

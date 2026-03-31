@@ -22,9 +22,10 @@ Responses stream in progressively — you see useful output within ~1 second. Th
 
 ```
 You hover over Japanese text → Yomitan shows its dictionary popup
-                              → Companion adds "✨ Explain" button near it
+                              → Companion adds "✨ Explain" button above it
 You click Explain             → Extension extracts the surrounding sentence
-                              → Sends it to your configured AI provider
+                              → Service worker tokenizes with kuromoji (IPADic)
+                              → Pre-analyzed morphology sent to AI provider
                               → Streams back a structured grammar analysis
                               → Renders it in a docked side panel
 ```
@@ -35,7 +36,7 @@ Yomitan renders its popup inside a **closed Shadow DOM + iframe**, so we can't i
 
 1. **Detects** Yomitan's popup via `document.elementFromPoint` probing — per the Shadow DOM spec, `elementFromPoint` returns the shadow host for elements inside closed shadows
 2. **Pre-captures** the sentence from the page DOM while text is still accessible (before the user clicks our button, which would dismiss Yomitan)
-3. **Positions** a floating analyze button near the popup with cascade positioning (below → right → left → above)
+3. **Positions** a floating Explain button above the selected text, using `window.getSelection()` bounding rect for precise positioning
 4. **Streams** the AI analysis from the service worker over a message port into a docked side panel
 
 Our UI is rendered inside a Shadow DOM to isolate styles from the host page.
@@ -103,9 +104,10 @@ All configured providers' models appear in a single unified dropdown, grouped by
 
 1. Browse any page with Japanese text
 2. Hover over a word to trigger Yomitan's popup (as usual)
-3. Click the **"✨ Explain"** button that appears near the popup
+3. Click the **"✨ Explain"** button that appears above the text
 4. Read the streaming grammar analysis in the docked side panel
-5. Close the panel with the **×** button; reopen with the floating **✨** button in the corner
+5. Switch models in the panel footer dropdown — analysis re-runs immediately
+6. Drag the panel edge to resize; close with **×**, reopen with the floating **✨** button
 
 ### Settings
 
@@ -127,10 +129,12 @@ src/
 │   ├── messaging.ts             # Port-based messaging with background
 │   └── ui/
 │       ├── panel-host.ts        # Shadow DOM host, button + panel management
-│       ├── analyze-button.ts    # Floating trigger button (cascade positioning)
-│       ├── companion-panel.ts   # Docked side panel (right or bottom)
+│       ├── analyze-button.ts    # Floating trigger button near text selection
+│       ├── companion-panel.ts   # Resizable docked side panel (right or bottom)
 │       ├── section-renderer.ts  # Streaming markdown → structured sections
 │       └── styles.ts            # Scoped CSS (dark/light themes, panel, button)
+├── tokenizer/
+│   └── kuromoji-tokenizer.ts    # Morphological analysis (IPADic via @patdx/kuromoji)
 ├── providers/
 │   ├── types.ts                 # ILLMProvider interface
 │   ├── provider-factory.ts      # Creates provider from config
