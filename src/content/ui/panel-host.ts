@@ -105,8 +105,8 @@ export class PanelHost {
   }
 
   /** Position the analyze button relative to a Yomitan popup rect. */
-  positionButton(popupRect: DOMRect): void {
-    this.button.position(popupRect);
+  positionButton(popupRect: DOMRect, mouseY?: number): void {
+    this.button.position(popupRect, mouseY);
   }
 
   /** Hide the reopen button (e.g. when panel opens via analyze). */

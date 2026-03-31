@@ -151,7 +151,7 @@ function onPopupShown(event: YomitanPopupEvent): void {
   preCapturedSentence = extractor.extractSentence();
 
   panelHost.getButton().show();
-  panelHost.positionButton(event.rect);
+  panelHost.positionButton(event.rect, event.mouseY);
 }
 
 function onPopupHidden(): void {
@@ -182,7 +182,7 @@ function onPagePointerDown(e: PointerEvent): void {
 
 function onPopupRepositioned(event: YomitanPopupEvent): void {
   if (!event.rect) return;
-  panelHost.positionButton(event.rect);
+  panelHost.positionButton(event.rect, event.mouseY);
   // Re-capture sentence since the user may be hovering over a different word
   preCapturedSentence = extractor.extractSentence();
 }

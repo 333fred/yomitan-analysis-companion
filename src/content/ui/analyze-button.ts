@@ -20,7 +20,7 @@ export class AnalyzeButton {
     return btn;
   }
 
-  position(popupRect: DOMRect): void {
+  position(popupRect: DOMRect, mouseY?: number): void {
     if (!this.element) return;
 
     const btnW = this.element.offsetWidth || 100;
@@ -32,11 +32,18 @@ export class AnalyzeButton {
     // so the real popup can extend up to 20px beyond the probed edges.
     const probeMargin = 20;
 
-    // Preferred: top-left, just above the popup
-    if (popupRect.top - probeMargin - gap - btnH >= 0) {
+    // When the popup is below the mouse, the text line is near mouseY.
+    // Position above the text line rather than above the popup (which
+    // would land between the text and the popup, clipping the text).
+    const aboveAnchorY = mouseY !== undefined && mouseY < popupRect.top
+      ? mouseY - gap - btnH
+      : popupRect.top - probeMargin - gap - btnH;
+
+    // Preferred: top-left, above the text/popup
+    if (aboveAnchorY >= 0) {
       const left = clamp(popupRect.left, gap, vw - btnW - gap);
       this.element.style.left = `${left}px`;
-      this.element.style.top = `${popupRect.top - probeMargin - gap - btnH}px`;
+      this.element.style.top = `${aboveAnchorY}px`;
       return;
     }
 
@@ -64,7 +71,7 @@ export class AnalyzeButton {
 
     // Last resort: top-left, clamped to viewport
     this.element.style.left = `${clamp(popupRect.left, gap, vw - btnW - gap)}px`;
-    this.element.style.top = `${Math.max(gap, popupRect.top - probeMargin - gap - btnH)}px`;
+    this.element.style.top = `${Math.max(gap, aboveAnchorY)}px`;
   }
 
   show(): void {
