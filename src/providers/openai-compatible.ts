@@ -1,4 +1,5 @@
 import type { ChatCompletion } from 'openai/resources/chat/completions';
+import type { AvailableModel } from '../shared/messages';
 import type { ILLMProvider, LLMRequest, LLMResponse } from './types';
 import { parseCompletionResponse, readSSEStream } from './sse-stream';
 
@@ -9,24 +10,27 @@ export class OpenAICompatibleProvider implements ILLMProvider {
   private readonly model: string;
 
   constructor(baseUrl: string, apiKey: string, model: string) {
-    // Normalize: strip trailing slash, ensure we target /chat/completions
-    this.baseUrl = baseUrl.replace(/\/+$/, '');
+    this.baseUrl = OpenAICompatibleProvider.normalizeBaseUrl(baseUrl);
     this.apiKey = apiKey;
     this.model = model;
   }
 
   private get endpoint(): string {
-    // If the base URL already ends with a specific path, use it directly.
-    // Otherwise append the standard OpenAI chat completions path.
-    if (this.baseUrl.endsWith('/chat/completions')) {
-      return this.baseUrl;
-    }
-    const base = this.baseUrl.replace(/\/v1\/?$/, '');
-    return `${base}/v1/chat/completions`;
+    return OpenAICompatibleProvider.buildChatCompletionsEndpoint(this.baseUrl);
   }
 
   async sendRequest(request: LLMRequest): Promise<LLMResponse> {
-    const body = this.buildRequestBody(request, false);
+    let body: Record<string, unknown>;
+    try {
+      body = this.buildRequestBody(request, false);
+    } catch (err) {
+      return {
+        text: '',
+        provider: this.name,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
 
     let res: Response;
     try {
@@ -65,7 +69,17 @@ export class OpenAICompatibleProvider implements ILLMProvider {
     request: LLMRequest,
     onChunk: (text: string) => void,
   ): Promise<LLMResponse> {
-    const body = this.buildRequestBody(request, true);
+    let body: Record<string, unknown>;
+    try {
+      body = this.buildRequestBody(request, true);
+    } catch (err) {
+      return {
+        text: '',
+        provider: this.name,
+        success: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
 
     let res: Response;
     try {
@@ -91,9 +105,35 @@ export class OpenAICompatibleProvider implements ILLMProvider {
   }
 
   async validate(): Promise<{ valid: boolean; error?: string }> {
+    let model = this.model.trim();
+    if (!model) {
+      try {
+        model =
+          (
+            await OpenAICompatibleProvider.fetchAvailableModels(
+              this.baseUrl,
+              this.apiKey,
+            )
+          )[0]?.id ?? '';
+      } catch (error) {
+        return {
+          valid: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+
+    if (!model) {
+      return {
+        valid: false,
+        error: 'No models were returned from the /models endpoint.',
+      };
+    }
+
     const result = await this.sendRequest({
       messages: [{ role: 'user', content: 'Say OK.' }],
       maxTokens: 16,
+      model,
     });
 
     if (result.success) {
@@ -103,11 +143,15 @@ export class OpenAICompatibleProvider implements ILLMProvider {
   }
 
   private buildHeaders(): Record<string, string> {
+    return OpenAICompatibleProvider.buildHeaders(this.apiKey);
+  }
+
+  private static buildHeaders(apiKey: string): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
     }
     return headers;
   }
@@ -116,8 +160,15 @@ export class OpenAICompatibleProvider implements ILLMProvider {
     request: LLMRequest,
     stream: boolean,
   ): Record<string, unknown> {
+    const model = request.model?.trim() || this.model.trim();
+    if (!model) {
+      throw new Error(
+        'No model selected. Choose one from the model dropdown first.',
+      );
+    }
+
     const body: Record<string, unknown> = {
-      model: request.model ?? this.model,
+      model,
       messages: request.messages,
       max_completion_tokens: request.maxTokens ?? 2048,
       stream,
@@ -128,25 +179,211 @@ export class OpenAICompatibleProvider implements ILLMProvider {
     return body;
   }
 
-  private async buildErrorResponse(res: Response): Promise<LLMResponse> {
-    let detail = '';
+  static async fetchAvailableModels(
+    baseUrl: string,
+    apiKey: string,
+  ): Promise<AvailableModel[]> {
+    const endpoint = this.buildModelsEndpoint(baseUrl);
+    const res = await fetch(endpoint, {
+      headers: this.buildHeaders(apiKey),
+    });
+
+    if (!res.ok) {
+      const detail = await this.readErrorDetail(res);
+      switch (res.status) {
+        case 401:
+          throw new Error(
+            `Authentication failed: ${detail}. Check your API key.`,
+          );
+        case 404:
+          throw new Error(
+            `Models endpoint not found: ${detail}. Check your base URL.`,
+          );
+        default:
+          throw new Error(`Failed to fetch models (${res.status}): ${detail}`);
+      }
+    }
+
+    const payload = (await res.json()) as unknown;
+    const rawModels = this.extractModelList(payload);
+    if (!rawModels) {
+      throw new Error('Unexpected /models response format.');
+    }
+
+    const hostname = this.getHostname(endpoint);
+    const models = new Map<string, AvailableModel>();
+
+    for (const item of rawModels) {
+      const model = this.toAvailableModel(item, hostname);
+      if (model) {
+        models.set(model.id, model);
+      }
+    }
+
+    return Array.from(models.values()).sort(
+      (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+    );
+  }
+
+  private static normalizeBaseUrl(baseUrl: string): string {
+    return baseUrl.replace(/\/+$/, '');
+  }
+
+  private static buildChatCompletionsEndpoint(baseUrl: string): string {
+    const normalized = this.normalizeBaseUrl(baseUrl);
+    if (normalized.endsWith('/chat/completions')) {
+      return normalized;
+    }
+    const base = normalized.replace(/\/v1\/?$/, '');
+    return `${base}/v1/chat/completions`;
+  }
+
+  private static buildModelsEndpoint(baseUrl: string): string {
+    const normalized = this.normalizeBaseUrl(baseUrl);
+    if (normalized.endsWith('/models')) {
+      return normalized;
+    }
+    if (normalized.endsWith('/chat/completions')) {
+      return normalized.replace(/\/chat\/completions$/, '/models');
+    }
+    const base = normalized.replace(/\/v1\/?$/, '');
+    return `${base}/v1/models`;
+  }
+
+  private static extractModelList(payload: unknown): unknown[] | null {
+    if (Array.isArray(payload)) {
+      return payload;
+    }
+    if (!payload || typeof payload !== 'object') {
+      return null;
+    }
+
+    const record = payload as Record<string, unknown>;
+    if (Array.isArray(record.data)) {
+      return record.data;
+    }
+    if (Array.isArray(record.models)) {
+      return record.models;
+    }
+    return null;
+  }
+
+  private static toAvailableModel(
+    item: unknown,
+    hostname?: string,
+  ): AvailableModel | null {
+    if (!item || typeof item !== 'object') {
+      return null;
+    }
+
+    const record = item as Record<string, unknown>;
+    const id =
+      typeof record.id === 'string' && record.id.trim()
+        ? record.id.trim()
+        : typeof record.name === 'string' && record.name.trim()
+          ? record.name.trim()
+          : '';
+    if (!id) {
+      return null;
+    }
+
+    const name =
+      typeof record.name === 'string' && record.name.trim()
+        ? record.name.trim()
+        : id;
+    const ownedBy =
+      typeof record.owned_by === 'string' && record.owned_by.trim()
+        ? record.owned_by.trim()
+        : undefined;
+    const publisher =
+      ownedBy && ownedBy.toLowerCase() !== 'system'
+        ? ownedBy
+        : typeof record.publisher === 'string' && record.publisher.trim()
+          ? record.publisher.trim()
+          : hostname;
+
+    const limits = this.asRecord(record.limits);
+    const tags =
+      this.toStringArray(record.tags) ??
+      this.toStringArray(record.capabilities);
+
+    return {
+      id,
+      name,
+      publisher,
+      summary:
+        typeof record.description === 'string' ? record.description : undefined,
+      tags,
+      maxInputTokens:
+        this.readNumber(
+          record,
+          'context_window',
+          'context_length',
+          'max_context_length',
+        ) ?? (limits ? this.readNumber(limits, 'max_input_tokens') : undefined),
+      maxOutputTokens:
+        this.readNumber(record, 'max_output_tokens', 'output_token_limit') ??
+        (limits ? this.readNumber(limits, 'max_output_tokens') : undefined),
+    };
+  }
+
+  private static asRecord(value: unknown): Record<string, unknown> | null {
+    return value && typeof value === 'object'
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private static readNumber(
+    record: Record<string, unknown>,
+    ...keys: string[]
+  ): number | undefined {
+    for (const key of keys) {
+      const value = record[key];
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value;
+      }
+    }
+    return undefined;
+  }
+
+  private static toStringArray(value: unknown): string[] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+    const items = value.filter(
+      (item): item is string => typeof item === 'string' && item.length > 0,
+    );
+    return items.length > 0 ? items : undefined;
+  }
+
+  private static getHostname(url: string): string | undefined {
+    try {
+      return new URL(url).hostname;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private static async readErrorDetail(res: Response): Promise<string> {
     try {
       const errorBody = await res.json();
-      // Handle OpenAI format: { error: { message } }
-      // Handle Ollama format: { error: "string" }
-      // Handle generic: { message: "string" }
       if (typeof errorBody.error === 'string') {
-        detail = errorBody.error;
-      } else if (errorBody.error?.message) {
-        detail = errorBody.error.message;
-      } else if (errorBody.message) {
-        detail = errorBody.message;
-      } else {
-        detail = JSON.stringify(errorBody);
+        return errorBody.error;
       }
+      if (errorBody.error?.message) {
+        return errorBody.error.message;
+      }
+      if (errorBody.message) {
+        return errorBody.message;
+      }
+      return JSON.stringify(errorBody);
     } catch {
-      detail = res.statusText;
+      return res.statusText;
     }
+  }
+
+  private async buildErrorResponse(res: Response): Promise<LLMResponse> {
+    const detail = await OpenAICompatibleProvider.readErrorDetail(res);
 
     let error: string;
     switch (res.status) {

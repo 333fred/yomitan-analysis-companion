@@ -25,10 +25,20 @@ interface GetConfigRequest {
 
 interface FetchModelsRequest {
   type: 'FETCH_MODELS';
-  payload?: { token?: string };
+  payload?: {
+    providerType?: 'github-models' | 'openai-compatible';
+    token?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+  };
 }
 
-type OutboundMessage = AnalyzeRequest | ValidateProviderRequest | GetConfigRequest | FetchModelsRequest;
+type OutboundMessage =
+  | AnalyzeRequest
+  | ValidateProviderRequest
+  | GetConfigRequest
+  | FetchModelsRequest;
 
 /** Messages received over a streaming port from background → content */
 interface AnalyzeChunkMessage {
@@ -48,7 +58,10 @@ interface AnalyzeErrorMessage {
   retryable: boolean;
 }
 
-type StreamMessage = AnalyzeChunkMessage | AnalyzeCompleteMessage | AnalyzeErrorMessage;
+type StreamMessage =
+  | AnalyzeChunkMessage
+  | AnalyzeCompleteMessage
+  | AnalyzeErrorMessage;
 
 // TODO: Import from '@/shared/config' once that module exists.
 interface ExtensionConfig {
@@ -158,13 +171,27 @@ export async function getConfig(): Promise<ExtensionConfig> {
   return sendMessage<ExtensionConfig>(message);
 }
 
-export async function fetchModels(token?: string): Promise<{
-  models: Array<{ id: string; name: string; publisher: string }>;
+export async function fetchModels(payload?: {
+  providerType?: 'github-models' | 'openai-compatible';
+  token?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  model?: string;
+}): Promise<{
+  models: Array<{
+    id: string;
+    name: string;
+    publisher?: string;
+    summary?: string;
+    tags?: string[];
+    maxInputTokens?: number;
+    maxOutputTokens?: number;
+  }>;
   error?: string;
 }> {
   const message: FetchModelsRequest = {
     type: 'FETCH_MODELS',
-    ...(token ? { payload: { token } } : {}),
+    ...(payload ? { payload } : {}),
   };
   return sendMessage(message);
 }

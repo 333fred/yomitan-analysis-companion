@@ -1,132 +1,186 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Yomitan Copilot Companion — Settings</title>
-  <link rel="stylesheet" href="options.css">
-</head>
-<body>
-  <div class="container">
-    <h1>⚡ Yomitan Copilot Companion</h1>
-    <p class="subtitle">Configure your AI-powered grammar analysis companion</p>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yomitan Copilot Companion — Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>⚡ Yomitan Copilot Companion</h1>
+      <p class="subtitle">
+        Configure your AI-powered grammar analysis companion
+      </p>
 
-    <section class="settings-group">
-      <h2>AI Providers</h2>
-      <p class="section-description">Configure one or more providers below. Models from all configured providers will appear in the model dropdown.</p>
+      <section class="settings-group">
+        <h2>AI Providers</h2>
+        <p class="section-description">
+          Configure one or more providers below. Models from all configured
+          providers will appear in the model dropdown.
+        </p>
 
-      <!-- GitHub Models credentials -->
-      <details class="provider-details" id="github-models-details" open>
-        <summary class="provider-summary">GitHub Models <span class="badge">recommended</span></summary>
-        <div class="provider-settings">
-          <label class="field">
-            Personal Access Token
-            <input type="password" id="github-token" placeholder="ghp_..." autocomplete="off">
-            <small>Requires <code>models:read</code> scope.
-              <a href="https://github.com/settings/tokens?type=beta" target="_blank" rel="noopener">Create token →</a>
-            </small>
-          </label>
-        </div>
-      </details>
-
-      <!-- Anthropic credentials -->
-      <details class="provider-details" id="anthropic-details">
-        <summary class="provider-summary">Anthropic (Claude)</summary>
-        <div class="provider-settings">
-          <label class="field">
-            API Key
-            <input type="password" id="anthropic-key" placeholder="sk-ant-..." autocomplete="off">
-            <small>Get your key from
-              <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com →</a>
-            </small>
-          </label>
-        </div>
-      </details>
-
-      <!-- Custom endpoint credentials -->
-      <details class="provider-details" id="openai-details">
-        <summary class="provider-summary">Custom OpenAI-compatible endpoint</summary>
-        <div class="provider-settings">
-          <label class="field">
-            API Base URL
-            <input type="url" id="openai-url" placeholder="https://api.openai.com/v1">
-            <small>The base URL of the OpenAI-compatible API (without <code>/chat/completions</code>).</small>
-          </label>
-          <label class="field">
-            API Key
-            <input type="password" id="openai-key" placeholder="sk-..." autocomplete="off">
-            <small>Leave blank if your endpoint does not require authentication.</small>
-          </label>
-          <label class="field">
-            Model Name
-            <input type="text" id="openai-model" placeholder="gpt-4-turbo">
-          </label>
-        </div>
-      </details>
-
-      <!-- Unified model selector -->
-      <div class="unified-model-selector">
-        <label class="field">
-          Model
-          <div class="select-with-action">
-            <select id="unified-model">
-              <option value="">Configure a provider above…</option>
-            </select>
-            <button id="refresh-models-btn" class="btn-icon" type="button" title="Refresh model list">↻</button>
+        <!-- GitHub Models credentials -->
+        <details class="provider-details" id="github-models-details" open>
+          <summary class="provider-summary">
+            GitHub Models <span class="badge">recommended</span>
+          </summary>
+          <div class="provider-settings">
+            <label class="field">
+              Personal Access Token
+              <input
+                type="password"
+                id="github-token"
+                placeholder="ghp_..."
+                autocomplete="off"
+              />
+              <small
+                >Requires <code>models:read</code> scope.
+                <a
+                  href="https://github.com/settings/tokens?type=beta"
+                  target="_blank"
+                  rel="noopener"
+                  >Create token →</a
+                >
+              </small>
+            </label>
           </div>
+        </details>
+
+        <!-- Anthropic credentials -->
+        <details class="provider-details" id="anthropic-details">
+          <summary class="provider-summary">Anthropic (Claude)</summary>
+          <div class="provider-settings">
+            <label class="field">
+              API Key
+              <input
+                type="password"
+                id="anthropic-key"
+                placeholder="sk-ant-..."
+                autocomplete="off"
+              />
+              <small
+                >Get your key from
+                <a
+                  href="https://console.anthropic.com/settings/keys"
+                  target="_blank"
+                  rel="noopener"
+                  >console.anthropic.com →</a
+                >
+              </small>
+            </label>
+          </div>
+        </details>
+
+        <!-- Custom endpoint credentials -->
+        <details class="provider-details" id="openai-details">
+          <summary class="provider-summary">
+            Custom OpenAI-compatible endpoint
+          </summary>
+          <div class="provider-settings">
+            <label class="field">
+              API Base URL
+              <input
+                type="url"
+                id="openai-url"
+                placeholder="https://api.openai.com/v1"
+              />
+              <small
+                >The base URL of the OpenAI-compatible API (without
+                <code>/chat/completions</code>). Models are loaded automatically
+                from <code>/models</code>.</small
+              >
+            </label>
+            <label class="field">
+              API Key
+              <input
+                type="password"
+                id="openai-key"
+                placeholder="sk-..."
+                autocomplete="off"
+              />
+              <small
+                >Leave blank if your endpoint does not require
+                authentication.</small
+              >
+            </label>
+          </div>
+        </details>
+
+        <!-- Unified model selector -->
+        <div class="unified-model-selector">
+          <label class="field">
+            Model
+            <div class="select-with-action">
+              <select id="unified-model">
+                <option value="">Configure a provider above…</option>
+              </select>
+              <button
+                id="refresh-models-btn"
+                class="btn-icon"
+                type="button"
+                title="Refresh model list"
+              >
+                ↻
+              </button>
+            </div>
+          </label>
+          <div id="model-info" class="model-info" hidden></div>
+        </div>
+
+        <div class="inline-action">
+          <button id="validate-btn" class="btn btn-secondary" type="button">
+            Test Connection
+          </button>
+          <span id="validate-status" class="status-message" hidden></span>
+        </div>
+      </section>
+
+      <section class="settings-group">
+        <h2>Analysis Preferences</h2>
+        <label class="field">
+          Explanation Language
+          <select id="explanation-language">
+            <option value="english">English</option>
+            <option value="japanese">Japanese</option>
+          </select>
         </label>
-        <div id="model-info" class="model-info" hidden></div>
+        <label class="field">
+          Detail Level
+          <select id="detail-level">
+            <option value="full">Full (recommended)</option>
+            <option value="brief">Brief</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="settings-group">
+        <h2>Appearance</h2>
+        <label class="field">
+          Theme
+          <select id="theme">
+            <option value="auto">Auto (match page)</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </label>
+        <label class="field">
+          Analysis Panel Position
+          <select id="panel-position">
+            <option value="right">Right side</option>
+            <option value="bottom">Bottom</option>
+          </select>
+        </label>
+      </section>
+
+      <div class="actions">
+        <button id="save-btn" class="btn btn-primary" type="button">
+          Save Settings
+        </button>
+        <span id="save-status" class="status-message" hidden></span>
       </div>
-
-      <div class="inline-action">
-        <button id="validate-btn" class="btn btn-secondary" type="button">Test Connection</button>
-        <span id="validate-status" class="status-message" hidden></span>
-      </div>
-    </section>
-
-    <section class="settings-group">
-      <h2>Analysis Preferences</h2>
-      <label class="field">
-        Explanation Language
-        <select id="explanation-language">
-          <option value="english">English</option>
-          <option value="japanese">Japanese</option>
-        </select>
-      </label>
-      <label class="field">
-        Detail Level
-        <select id="detail-level">
-          <option value="full">Full (recommended)</option>
-          <option value="brief">Brief</option>
-        </select>
-      </label>
-    </section>
-
-    <section class="settings-group">
-      <h2>Appearance</h2>
-      <label class="field">
-        Theme
-        <select id="theme">
-          <option value="auto">Auto (match page)</option>
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-        </select>
-      </label>
-      <label class="field">
-        Analysis Panel Position
-        <select id="panel-position">
-          <option value="right">Right side</option>
-          <option value="bottom">Bottom</option>
-        </select>
-      </label>
-    </section>
-
-    <div class="actions">
-      <button id="save-btn" class="btn btn-primary" type="button">Save Settings</button>
-      <span id="save-status" class="status-message" hidden></span>
     </div>
-  </div>
 
-  <script type="module" src="options.ts"></script>
-</body>
+    <script type="module" src="options.ts"></script>
+  </body>
 </html>

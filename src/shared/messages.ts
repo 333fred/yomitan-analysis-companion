@@ -77,22 +77,28 @@ export interface ConfigResult {
 export interface FetchModelsRequest {
   type: typeof MESSAGE_TYPES.FETCH_MODELS;
   payload?: {
+    providerType?: ProviderConfig['type'];
     token?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
   };
+}
+
+export interface AvailableModel {
+  id: string;
+  name: string;
+  publisher?: string;
+  summary?: string;
+  tags?: string[];
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
 }
 
 export interface FetchModelsResult {
   type: typeof MESSAGE_TYPES.FETCH_MODELS_RESULT;
   payload: {
-    models: Array<{
-      id: string;
-      name: string;
-      publisher: string;
-      summary?: string;
-      tags?: string[];
-      maxInputTokens?: number;
-      maxOutputTokens?: number;
-    }>;
+    models: AvailableModel[];
     error?: string;
   };
 }

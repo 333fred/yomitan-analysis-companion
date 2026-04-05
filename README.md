@@ -97,6 +97,7 @@ Works with any API that follows the OpenAI chat completions format:
 - **OpenAI directly**: base URL `https://api.openai.com/v1`, your OpenAI API key
 - **Ollama (local)**: base URL `http://localhost:11434/v1`, no API key needed
 - **Any compatible provider**: LM Studio, Together AI, Groq, etc.
+- Models are discovered automatically from the endpoint's `/models` API once you enter the base URL and key.
 
 ### Selecting a Model
 

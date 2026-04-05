@@ -25,7 +25,7 @@ This is a Chrome/Edge browser extension (Manifest V3) that serves as an AI-power
 6. **API calls happen in the service worker**, not the content script, to avoid CORS issues.
 7. **No UI framework** in the content script — vanilla TypeScript DOM manipulation to keep the injected bundle small (~30KB).
 8. **Two-pass Vite build**: The content script is built separately as IIFE (self-contained, no imports); background + options are built as ES modules with shared chunks.
-9. **Multi-provider model selection**: Users configure credentials for multiple providers simultaneously. A single unified model dropdown aggregates models from all providers, grouped by provider. The selected model determines which provider is used. The model can also be switched from the sidebar panel footer, which immediately re-runs the analysis.
+9. **Multi-provider model selection**: Users configure credentials for multiple providers simultaneously. A single unified model dropdown aggregates models from all providers, grouped by provider. GitHub models are fetched from the GitHub catalog, and generic OpenAI-compatible endpoints are queried via their `/models` endpoint. The selected model determines which provider is used. The model can also be switched from the sidebar panel footer, which immediately re-runs the analysis.
 10. **Morphological pre-analysis**: Before sending to the AI, sentences are tokenized with kuromoji (IPADic dictionary) to provide deterministic word boundaries, readings, POS tags, and base forms. This data is injected into the prompt as authoritative, so the AI focuses on meaning and grammar explanation rather than guessing morphology.
 
 ### Data Flow
@@ -45,6 +45,7 @@ Page → Content Script (elementFromPoint probing detects Yomitan popup)
 ### Popup Detection (elementFromPoint probing)
 
 The `YomitanObserver` class uses a polling approach (every 200ms when a container is tracked):
+
 - Tracks mouse position via `mousemove` listener
 - Probes 16 points in a fan around the mouse cursor
 - If any probe returns the Yomitan container, walks outward in 20px steps to find popup bounds (two-pass probing at midpoints for stability)
@@ -166,6 +167,7 @@ options/options.ts            ← imports from shared, providers/anthropic.ts (m
 ### OpenAI-Compatible
 
 - Any endpoint following `/chat/completions` format
+- Model discovery uses the endpoint's `/models` API and populates the shared dropdown automatically
 - Streaming: SSE with `data: {...}` lines, terminated by `data: [DONE]`
 - Uses `max_completion_tokens` for compatibility with newer models
 

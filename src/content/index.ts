@@ -54,7 +54,9 @@ function encodeModel(provider: string, modelId: string): string {
   return `${provider}${MODEL_SEP}${modelId}`;
 }
 
-function decodeModel(value: string): { providerType: string; model: string } | null {
+function decodeModel(
+  value: string,
+): { providerType: string; model: string } | null {
   const idx = value.indexOf(MODEL_SEP);
   if (idx < 0) return null;
   return {
@@ -67,33 +69,52 @@ function getDefaultModelEncoded(config: ExtensionConfig): string {
   const { type } = config.provider;
   let model = '';
   switch (type) {
-    case 'github-models': model = config.provider.githubModels?.model ?? ''; break;
-    case 'anthropic': model = config.provider.anthropic?.model ?? ''; break;
-    case 'openai-compatible': model = config.provider.openaiCompatible?.model ?? ''; break;
+    case 'github-models':
+      model = config.provider.githubModels?.model ?? '';
+      break;
+    case 'anthropic':
+      model = config.provider.anthropic?.model ?? '';
+      break;
+    case 'openai-compatible':
+      model = config.provider.openaiCompatible?.model ?? '';
+      break;
   }
   return encodeModel(type, model);
 }
 
+function formatModelLabel(model: { name: string; publisher?: string }): string {
+  return model.publisher ? `${model.name} (${model.publisher})` : model.name;
+}
+
 async function loadModelsIntoPanel(config: ExtensionConfig): Promise<void> {
   const groups: ModelGroup[] = [];
-
-  // GitHub Models (async catalog fetch)
   const ghToken = config.provider.githubModels?.token;
-  if (ghToken) {
-    try {
-      const result = await fetchModels(ghToken);
-      if (result.models.length > 0) {
-        groups.push({
-          label: 'GitHub Models',
-          options: result.models.map((m) => ({
-            value: encodeModel('github-models', m.id),
-            label: `${m.name} (${m.publisher})`,
-          })),
-        });
-      }
-    } catch {
-      // Ignore fetch errors; the dropdown just won't have GitHub models
-    }
+  const openAIConfig = config.provider.openaiCompatible;
+
+  const [githubResult, openAIResult] = await Promise.all([
+    ghToken
+      ? fetchModels({ providerType: 'github-models', token: ghToken }).catch(
+          () => ({ models: [] }),
+        )
+      : Promise.resolve({ models: [] }),
+    openAIConfig?.baseUrl
+      ? fetchModels({
+          providerType: 'openai-compatible',
+          baseUrl: openAIConfig.baseUrl,
+          apiKey: openAIConfig.apiKey,
+          model: openAIConfig.model,
+        }).catch(() => ({ models: [] }))
+      : Promise.resolve({ models: [] }),
+  ]);
+
+  if (githubResult.models.length > 0) {
+    groups.push({
+      label: 'GitHub Models',
+      options: githubResult.models.map((m) => ({
+        value: encodeModel('github-models', m.id),
+        label: formatModelLabel(m),
+      })),
+    });
   }
 
   // Anthropic
@@ -108,11 +129,13 @@ async function loadModelsIntoPanel(config: ExtensionConfig): Promise<void> {
   }
 
   // OpenAI-compatible
-  const oai = config.provider.openaiCompatible;
-  if (oai?.baseUrl && oai?.model) {
+  if (openAIResult.models.length > 0) {
     groups.push({
       label: 'Custom Endpoint',
-      options: [{ value: encodeModel('openai-compatible', oai.model), label: oai.model }],
+      options: openAIResult.models.map((m) => ({
+        value: encodeModel('openai-compatible', m.id),
+        label: formatModelLabel(m),
+      })),
     });
   }
 
@@ -256,13 +279,16 @@ function ensureMounted(): void {
     config.provider.type = providerType;
     switch (providerType) {
       case 'github-models':
-        if (config.provider.githubModels) config.provider.githubModels.model = decoded.model;
+        if (config.provider.githubModels)
+          config.provider.githubModels.model = decoded.model;
         break;
       case 'anthropic':
-        if (config.provider.anthropic) config.provider.anthropic.model = decoded.model;
+        if (config.provider.anthropic)
+          config.provider.anthropic.model = decoded.model;
         break;
       case 'openai-compatible':
-        if (config.provider.openaiCompatible) config.provider.openaiCompatible.model = decoded.model;
+        if (config.provider.openaiCompatible)
+          config.provider.openaiCompatible.model = decoded.model;
         break;
     }
 
@@ -313,7 +339,10 @@ function onAnalyzeClick(): void {
     console.warn(LOG, 'Could not extract sentence from page');
     const panel = panelHost.getPanel();
     panel.clearContent();
-    panel.showError('Could not extract sentence. Try selecting text first.', false);
+    panel.showError(
+      'Could not extract sentence. Try selecting text first.',
+      false,
+    );
     panel.open();
     panelHost.hideReopenButton();
     return;
@@ -352,11 +381,17 @@ function startAnalysis(data: SentenceData): void {
         cancelStream = null;
       },
       onError(error: string, retryable: boolean) {
-        panel.showError(error, retryable, retryable ? () => {
-          if (lastSentenceData) {
-            startAnalysis(lastSentenceData);
-          }
-        } : undefined);
+        panel.showError(
+          error,
+          retryable,
+          retryable
+            ? () => {
+                if (lastSentenceData) {
+                  startAnalysis(lastSentenceData);
+                }
+              }
+            : undefined,
+        );
         button.setLoading(false);
         isAnalyzing = false;
         cancelStream = null;
@@ -374,7 +409,10 @@ function init(): void {
   observer.start();
 
   scrollHandler = onPageScroll;
-  document.addEventListener('scroll', scrollHandler, { passive: true, capture: true });
+  document.addEventListener('scroll', scrollHandler, {
+    passive: true,
+    capture: true,
+  });
 
   pointerHandler = onPagePointerDown;
   document.addEventListener('pointerdown', pointerHandler, { capture: true });
@@ -397,7 +435,9 @@ function destroy(): void {
   }
 
   if (pointerHandler) {
-    document.removeEventListener('pointerdown', pointerHandler, { capture: true });
+    document.removeEventListener('pointerdown', pointerHandler, {
+      capture: true,
+    });
     pointerHandler = null;
   }
 
@@ -415,7 +455,8 @@ function destroy(): void {
 }
 
 if (typeof globalThis !== 'undefined') {
-  const prevDestroy = (globalThis as Record<string, unknown>).__yomitanCompanionDestroy;
+  const prevDestroy = (globalThis as Record<string, unknown>)
+    .__yomitanCompanionDestroy;
   if (typeof prevDestroy === 'function') prevDestroy();
   (globalThis as Record<string, unknown>).__yomitanCompanionDestroy = destroy;
 }

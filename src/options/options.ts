@@ -18,7 +18,6 @@ const githubToken = $<HTMLInputElement>('github-token');
 const anthropicKey = $<HTMLInputElement>('anthropic-key');
 const openaiUrl = $<HTMLInputElement>('openai-url');
 const openaiKey = $<HTMLInputElement>('openai-key');
-const openaiModel = $<HTMLInputElement>('openai-model');
 
 // Provider detail sections (for auto-open on load)
 const githubDetails = $<HTMLDetailsElement>('github-models-details');
@@ -55,11 +54,16 @@ type ModelEntry = {
   tags?: string[];
 };
 
-function encodeModelValue(provider: ProviderConfig['type'], modelId: string): string {
+function encodeModelValue(
+  provider: ProviderConfig['type'],
+  modelId: string,
+): string {
   return `${provider}${MODEL_SEP}${modelId}`;
 }
 
-function decodeModelValue(value: string): { provider: ProviderConfig['type']; model: string } | null {
+function decodeModelValue(
+  value: string,
+): { provider: ProviderConfig['type']; model: string } | null {
   const idx = value.indexOf(MODEL_SEP);
   if (idx < 0) return null;
   return {
@@ -89,46 +93,80 @@ function showStatus(
 
 // ── Unified model dropdown ──────────────────────────────────────────
 
-/** Cached GitHub catalog models for the current token. */
-let cachedGithubModels: ModelEntry[] | null = null;
-
-/** Metadata lookup for the currently-displayed models. */
+/** Metadata lookup for the currently displayed models. */
 let modelMetadata = new Map<string, ModelEntry>();
+/** Keep the last custom-endpoint model even when another provider is active. */
+let savedOpenAIModel = '';
+
+function formatModelLabel(model: { name: string; publisher?: string }): string {
+  return model.publisher ? `${model.name} (${model.publisher})` : model.name;
+}
+
+async function fetchProviderModels(
+  payload: {
+    providerType: 'github-models' | 'openai-compatible';
+    token?: string;
+    baseUrl?: string;
+    apiKey?: string;
+    model?: string;
+  },
+  fallback: ModelEntry[] = [],
+): Promise<ModelEntry[]> {
+  try {
+    const result = await new Promise<{
+      models: Array<{
+        id: string;
+        name: string;
+        publisher?: string;
+        summary?: string;
+        tags?: string[];
+        maxInputTokens?: number;
+        maxOutputTokens?: number;
+      }>;
+      error?: string;
+    }>((resolve, reject) => {
+      chrome.runtime.sendMessage(
+        { type: 'FETCH_MODELS', payload },
+        (response) => {
+          if (chrome.runtime.lastError)
+            reject(new Error(chrome.runtime.lastError.message));
+          else resolve(response);
+        },
+      );
+    });
+
+    const models = result.models.map((m) => ({
+      provider: payload.providerType,
+      id: m.id,
+      name: m.name,
+      summary: m.summary,
+      maxInputTokens: m.maxInputTokens,
+      maxOutputTokens: m.maxOutputTokens,
+      tags: m.tags,
+      ...(m.publisher ? { publisher: m.publisher } : {}),
+    }));
+
+    return models.length > 0 ? models : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 async function fetchGithubModels(): Promise<ModelEntry[]> {
   const token = githubToken.value.trim();
   if (!token) return [];
 
-  try {
-    const result = await new Promise<{ models: Array<{ id: string; name: string; publisher: string }>; error?: string }>(
-      (resolve, reject) => {
-        chrome.runtime.sendMessage(
-          { type: 'FETCH_MODELS', payload: { token } },
-          (response) => {
-            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-            else resolve(response);
-          },
-        );
-      },
-    );
+  const fallback = [...FALLBACK_GITHUB_MODELS].map((m) => ({
+    provider: 'github-models' as const,
+    id: m.id,
+    name: m.name,
+    publisher: m.publisher,
+  }));
 
-    const models = result.models.length > 0 ? result.models : [...FALLBACK_GITHUB_MODELS];
-    return models.map((m: any) => ({
-      provider: 'github-models' as const,
-      id: m.id,
-      name: `${m.name} (${m.publisher})`,
-      summary: m.summary,
-      maxInputTokens: m.maxInputTokens,
-      maxOutputTokens: m.maxOutputTokens,
-      tags: m.tags,
-    }));
-  } catch {
-    return [...FALLBACK_GITHUB_MODELS].map((m) => ({
-      provider: 'github-models' as const,
-      id: m.id,
-      name: `${m.name} (${m.publisher})`,
-    }));
-  }
+  return fetchProviderModels(
+    { providerType: 'github-models', token },
+    fallback,
+  );
 }
 
 function getAnthropicModels(): ModelEntry[] {
@@ -143,15 +181,29 @@ function getAnthropicModels(): ModelEntry[] {
   }));
 }
 
-function getCustomModels(): ModelEntry[] {
+async function getCustomModels(): Promise<ModelEntry[]> {
   const url = openaiUrl.value.trim();
-  const model = openaiModel.value.trim();
-  if (!url || !model) return [];
-  return [{
-    provider: 'openai-compatible' as const,
-    id: model,
-    name: model,
-  }];
+  if (!url) return [];
+
+  const fallback = savedOpenAIModel
+    ? [
+        {
+          provider: 'openai-compatible' as const,
+          id: savedOpenAIModel,
+          name: savedOpenAIModel,
+        },
+      ]
+    : [];
+
+  return fetchProviderModels(
+    {
+      providerType: 'openai-compatible',
+      baseUrl: url,
+      apiKey: openaiKey.value.trim(),
+      model: savedOpenAIModel,
+    },
+    fallback,
+  );
 }
 
 async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
@@ -165,20 +217,23 @@ async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
   const [githubModels, anthropicModels, customModels] = await Promise.all([
     githubToken.value.trim() ? fetchGithubModels() : Promise.resolve([]),
     Promise.resolve(getAnthropicModels()),
-    Promise.resolve(getCustomModels()),
+    getCustomModels(),
   ]);
-  cachedGithubModels = githubModels;
 
   unifiedModel.innerHTML = '';
 
   const groups: Array<{ label: string; models: ModelEntry[] }> = [];
-  if (githubModels.length > 0) groups.push({ label: 'GitHub Models', models: githubModels });
-  if (anthropicModels.length > 0) groups.push({ label: 'Anthropic (Claude)', models: anthropicModels });
-  if (customModels.length > 0) groups.push({ label: 'Custom Endpoint', models: customModels });
+  if (githubModels.length > 0)
+    groups.push({ label: 'GitHub Models', models: githubModels });
+  if (anthropicModels.length > 0)
+    groups.push({ label: 'Anthropic (Claude)', models: anthropicModels });
+  if (customModels.length > 0)
+    groups.push({ label: 'Custom Endpoint', models: customModels });
 
   if (groups.length === 0) {
     modelMetadata.clear();
-    unifiedModel.innerHTML = '<option value="">Configure a provider above…</option>';
+    unifiedModel.innerHTML =
+      '<option value="">Configure a provider above…</option>';
     unifiedModel.disabled = false;
     refreshModelsBtn.disabled = false;
     updateModelInfo();
@@ -195,7 +250,7 @@ async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
       modelMetadata.set(val, m);
       const opt = document.createElement('option');
       opt.value = val;
-      opt.textContent = m.name;
+      opt.textContent = formatModelLabel(m);
       optgroup.appendChild(opt);
     }
     unifiedModel.appendChild(optgroup);
@@ -203,7 +258,9 @@ async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
 
   // Restore previous selection if it still exists
   if (previous) {
-    const exists = Array.from(unifiedModel.options).some((o) => o.value === previous);
+    const exists = Array.from(unifiedModel.options).some(
+      (o) => o.value === previous,
+    );
     if (exists) unifiedModel.value = previous;
   }
 
@@ -214,7 +271,8 @@ async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
 
 /** Format a token count as a readable string (e.g., 1048576 → "1M"). */
 function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
+  if (n >= 1_000_000)
+    return `${(n / 1_000_000).toFixed(n % 1_000_000 === 0 ? 0 : 1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(n % 1_000 === 0 ? 0 : 1)}K`;
   return String(n);
 }
@@ -232,14 +290,22 @@ function updateModelInfo(): void {
 
   const parts: string[] = [];
   if (entry.summary) {
-    parts.push(`<span class="model-info-summary">${escapeHtml(entry.summary)}</span>`);
+    parts.push(
+      `<span class="model-info-summary">${escapeHtml(entry.summary)}</span>`,
+    );
   }
 
   const stats: string[] = [];
-  if (entry.maxInputTokens) stats.push(`Context: ${formatTokens(entry.maxInputTokens)}`);
-  if (entry.maxOutputTokens) stats.push(`Max output: ${formatTokens(entry.maxOutputTokens)}`);
+  if (entry.maxInputTokens)
+    stats.push(`Context: ${formatTokens(entry.maxInputTokens)}`);
+  if (entry.maxOutputTokens)
+    stats.push(`Max output: ${formatTokens(entry.maxOutputTokens)}`);
   if (entry.tags && entry.tags.length > 0) {
-    stats.push(entry.tags.map((t) => `<span class="model-tag">${escapeHtml(t)}</span>`).join(' '));
+    stats.push(
+      entry.tags
+        .map((t) => `<span class="model-tag">${escapeHtml(t)}</span>`)
+        .join(' '),
+    );
   }
   if (stats.length > 0) {
     parts.push(`<span class="model-info-stats">${stats.join(' · ')}</span>`);
@@ -263,7 +329,7 @@ async function loadSettings(): Promise<void> {
   anthropicKey.value = config.provider.anthropic?.apiKey ?? '';
   openaiUrl.value = config.provider.openaiCompatible?.baseUrl ?? '';
   openaiKey.value = config.provider.openaiCompatible?.apiKey ?? '';
-  openaiModel.value = config.provider.openaiCompatible?.model ?? '';
+  savedOpenAIModel = config.provider.openaiCompatible?.model ?? '';
 
   // Open details sections that have credentials
   if (githubToken.value) githubDetails.open = true;
@@ -297,7 +363,8 @@ async function loadSettings(): Promise<void> {
 
 function gatherConfig(): ExtensionConfig {
   const decoded = decodeModelValue(unifiedModel.value);
-  const providerType: ProviderConfig['type'] = decoded?.provider ?? 'github-models';
+  const providerType: ProviderConfig['type'] =
+    decoded?.provider ?? 'github-models';
   const modelId = decoded?.model ?? '';
 
   const provider: ProviderConfig = {
@@ -309,7 +376,7 @@ function gatherConfig(): ExtensionConfig {
     openaiCompatible: {
       baseUrl: openaiUrl.value.trim(),
       apiKey: openaiKey.value.trim(),
-      model: providerType === 'openai-compatible' ? modelId : openaiModel.value.trim(),
+      model: providerType === 'openai-compatible' ? modelId : savedOpenAIModel,
     },
     anthropic: {
       apiKey: anthropicKey.value.trim(),
@@ -318,13 +385,15 @@ function gatherConfig(): ExtensionConfig {
   };
 
   const analysis: AnalysisConfig = {
-    explanationLanguage: explanationLanguage.value as AnalysisConfig['explanationLanguage'],
+    explanationLanguage:
+      explanationLanguage.value as AnalysisConfig['explanationLanguage'],
     detailLevel: detailLevel.value as AnalysisConfig['detailLevel'],
   };
 
   const appearance: AppearanceConfig = {
     theme: theme.value as AppearanceConfig['theme'],
-    panelPosition: (panelPosition?.value ?? 'right') as AppearanceConfig['panelPosition'],
+    panelPosition: (panelPosition?.value ??
+      'right') as AppearanceConfig['panelPosition'],
   };
 
   return { provider, analysis, appearance };
@@ -344,14 +413,19 @@ function onCredentialChange(): void {
 githubToken.addEventListener('input', onCredentialChange);
 anthropicKey.addEventListener('input', onCredentialChange);
 openaiUrl.addEventListener('input', onCredentialChange);
-openaiModel.addEventListener('input', onCredentialChange);
+openaiKey.addEventListener('input', onCredentialChange);
 
 refreshModelsBtn.addEventListener('click', () => {
-  cachedGithubModels = null;
   rebuildModelDropdown();
 });
 
-unifiedModel.addEventListener('change', updateModelInfo);
+unifiedModel.addEventListener('change', () => {
+  const decoded = decodeModelValue(unifiedModel.value);
+  if (decoded?.provider === 'openai-compatible') {
+    savedOpenAIModel = decoded.model;
+  }
+  updateModelInfo();
+});
 
 validateBtn.addEventListener('click', async () => {
   const config = gatherConfig();

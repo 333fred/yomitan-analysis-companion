@@ -1,10 +1,18 @@
 import { getConfig } from '../shared/storage';
 import { createProvider } from '../providers/provider-factory';
 import { buildAnalysisMessages } from '../prompts/grammar-analysis';
-import { tokenize, formatTokensForPrompt } from '../tokenizer/kuromoji-tokenizer';
+import {
+  tokenize,
+  formatTokensForPrompt,
+} from '../tokenizer/kuromoji-tokenizer';
 import { GitHubModelsProvider } from '../providers/github-models';
+import { OpenAICompatibleProvider } from '../providers/openai-compatible';
 import { FALLBACK_GITHUB_MODELS } from '../shared/config';
-import type { ExtensionConfig, FetchModelsResult } from '../shared/messages';
+import type {
+  ExtensionConfig,
+  FetchModelsRequest,
+  FetchModelsResult,
+} from '../shared/messages';
 
 const PORT_NAME = 'yomitan-companion-analysis';
 
@@ -12,22 +20,28 @@ const PORT_NAME = 'yomitan-companion-analysis';
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name !== PORT_NAME) return;
 
-  port.onMessage.addListener(async (msg: { type: string; payload?: unknown }) => {
-    if (msg.type === 'ANALYZE_REQUEST') {
-      const payload = msg.payload as {
-        word: string;
-        sentence: string;
-        wordOffset: number;
-        modelOverride?: { providerType: string; model: string };
-      };
-      await handleAnalysisRequest(port, payload);
-    }
-  });
+  port.onMessage.addListener(
+    async (msg: { type: string; payload?: unknown }) => {
+      if (msg.type === 'ANALYZE_REQUEST') {
+        const payload = msg.payload as {
+          word: string;
+          sentence: string;
+          wordOffset: number;
+          modelOverride?: { providerType: string; model: string };
+        };
+        await handleAnalysisRequest(port, payload);
+      }
+    },
+  );
 });
 
 // One-shot message requests (config, validation)
 chrome.runtime.onMessage.addListener(
-  (msg: { type: string; payload?: Record<string, unknown> }, _sender, sendResponse) => {
+  (
+    msg: { type: string; payload?: Record<string, unknown> },
+    _sender,
+    sendResponse,
+  ) => {
     if (msg.type === 'VALIDATE_PROVIDER') {
       handleValidateProvider().then(sendResponse);
       return true; // keep channel open for async response
@@ -37,7 +51,9 @@ chrome.runtime.onMessage.addListener(
       return true;
     }
     if (msg.type === 'FETCH_MODELS') {
-      handleFetchModels(msg.payload?.token as string | undefined).then(sendResponse);
+      handleFetchModels(
+        msg.payload as FetchModelsRequest['payload'] | undefined,
+      ).then(sendResponse);
       return true;
     }
     return false;
@@ -72,13 +88,16 @@ async function handleAnalysisRequest(
       config.provider.type = providerType as typeof config.provider.type;
       switch (providerType) {
         case 'github-models':
-          if (config.provider.githubModels) config.provider.githubModels.model = model;
+          if (config.provider.githubModels)
+            config.provider.githubModels.model = model;
           break;
         case 'anthropic':
-          if (config.provider.anthropic) config.provider.anthropic.model = model;
+          if (config.provider.anthropic)
+            config.provider.anthropic.model = model;
           break;
         case 'openai-compatible':
-          if (config.provider.openaiCompatible) config.provider.openaiCompatible.model = model;
+          if (config.provider.openaiCompatible)
+            config.provider.openaiCompatible.model = model;
           break;
       }
     }
@@ -91,7 +110,10 @@ async function handleAnalysisRequest(
       const tokens = await tokenize(payload.sentence);
       tokenTable = formatTokensForPrompt(tokens);
     } catch (err) {
-      console.warn('[YomitanCompanion:SW] Tokenization failed, proceeding without:', err);
+      console.warn(
+        '[YomitanCompanion:SW] Tokenization failed, proceeding without:',
+        err,
+      );
     }
 
     const messages = buildAnalysisMessages(
@@ -154,15 +176,58 @@ async function handleGetConfig(): Promise<ExtensionConfig> {
   return getConfig();
 }
 
-/** Fetch available models from the GitHub catalog API. */
+/** Fetch available models for the requested provider. */
 async function handleFetchModels(
-  requestToken?: string,
+  request?: FetchModelsRequest['payload'],
 ): Promise<FetchModelsResult['payload']> {
+  const config = await getConfig();
+  const providerType =
+    request?.providerType ??
+    (request?.baseUrl
+      ? 'openai-compatible'
+      : request?.token
+        ? 'github-models'
+        : config.provider.type);
+
+  if (providerType === 'openai-compatible') {
+    const baseUrl =
+      request?.baseUrl?.trim() ||
+      config.provider.openaiCompatible?.baseUrl?.trim();
+    const apiKey =
+      request?.apiKey ?? config.provider.openaiCompatible?.apiKey ?? '';
+    const fallbackModels = buildSavedModelFallback(
+      request?.model ?? config.provider.openaiCompatible?.model,
+      baseUrl,
+    );
+
+    if (!baseUrl) {
+      return {
+        models: fallbackModels,
+        error: 'No OpenAI-compatible base URL configured',
+      };
+    }
+
+    try {
+      const models = await OpenAICompatibleProvider.fetchAvailableModels(
+        baseUrl,
+        apiKey,
+      );
+      return { models: models.length > 0 ? models : fallbackModels };
+    } catch (error) {
+      return {
+        models: fallbackModels,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   try {
-    const config = await getConfig();
-    const token = requestToken || config.provider.githubModels?.token;
+    const token = request?.token || config.provider.githubModels?.token;
     if (!token) {
-      return { models: [...FALLBACK_GITHUB_MODELS], error: 'No GitHub token configured' };
+      return {
+        models: [...FALLBACK_GITHUB_MODELS],
+        error: 'No GitHub token configured',
+      };
     }
     const models = await GitHubModelsProvider.fetchAvailableModels(token);
     return { models };
@@ -172,6 +237,33 @@ async function handleFetchModels(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function buildSavedModelFallback(
+  model: string | undefined,
+  baseUrl?: string,
+): FetchModelsResult['payload']['models'] {
+  const modelId = model?.trim();
+  if (!modelId) {
+    return [];
+  }
+
+  let publisher: string | undefined;
+  if (baseUrl) {
+    try {
+      publisher = new URL(baseUrl).hostname;
+    } catch {
+      publisher = undefined;
+    }
+  }
+
+  return [
+    {
+      id: modelId,
+      name: modelId,
+      publisher,
+    },
+  ];
 }
 
 /** Determine if an error is transient and worth retrying. */
