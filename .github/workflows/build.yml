@@ -33,12 +33,9 @@ jobs:
           VERSION=$(node -e "console.log(JSON.parse(require('fs').readFileSync('dist/manifest.json','utf8')).version)")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Package extension zip
-        run: cd dist && zip -r ../yomitan-copilot-companion-v${{ steps.version.outputs.version }}.zip .
-
       - name: Upload build artifact
         uses: actions/upload-artifact@v6
         with:
           name: yomitan-copilot-companion-v${{ steps.version.outputs.version }}
-          path: yomitan-copilot-companion-v${{ steps.version.outputs.version }}.zip
+          path: dist/*
           retention-days: 90
