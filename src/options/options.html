@@ -107,6 +107,45 @@
           </div>
         </details>
 
+        <!-- Azure AI Foundry credentials -->
+        <details class="provider-details" id="azure-details">
+          <summary class="provider-summary">Azure AI Foundry</summary>
+          <div class="provider-settings">
+            <label class="field">
+              Endpoint URL
+              <input
+                type="url"
+                id="azure-endpoint"
+                placeholder="https://your-project.services.ai.azure.com"
+              />
+              <small
+                >The base endpoint URL for your Azure AI Foundry project or
+                serverless deployment. Find it in
+                <a
+                  href="https://ai.azure.com"
+                  target="_blank"
+                  rel="noopener"
+                  >Azure AI Foundry →</a
+                >
+                under your project's overview page.</small
+              >
+            </label>
+            <label class="field">
+              API Key
+              <input
+                type="password"
+                id="azure-key"
+                placeholder="..."
+                autocomplete="off"
+              />
+              <small
+                >The API key for your Azure AI Foundry endpoint. Find it in
+                your project settings.</small
+              >
+            </label>
+          </div>
+        </details>
+
         <!-- Unified model selector -->
         <div class="unified-model-selector">
           <label class="field">

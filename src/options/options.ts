@@ -18,11 +18,14 @@ const githubToken = $<HTMLInputElement>('github-token');
 const anthropicKey = $<HTMLInputElement>('anthropic-key');
 const openaiUrl = $<HTMLInputElement>('openai-url');
 const openaiKey = $<HTMLInputElement>('openai-key');
+const azureEndpoint = $<HTMLInputElement>('azure-endpoint');
+const azureKey = $<HTMLInputElement>('azure-key');
 
 // Provider detail sections (for auto-open on load)
 const githubDetails = $<HTMLDetailsElement>('github-models-details');
 const anthropicDetails = $<HTMLDetailsElement>('anthropic-details');
 const openaiDetails = $<HTMLDetailsElement>('openai-details');
+const azureDetails = $<HTMLDetailsElement>('azure-details');
 
 // Unified model selector
 const unifiedModel = $<HTMLSelectElement>('unified-model');
@@ -97,6 +100,8 @@ function showStatus(
 let modelMetadata = new Map<string, ModelEntry>();
 /** Keep the last custom-endpoint model even when another provider is active. */
 let savedOpenAIModel = '';
+/** Keep the last Azure model even when another provider is active. */
+let savedAzureModel = '';
 
 function formatModelLabel(model: { name: string; publisher?: string }): string {
   return model.publisher ? `${model.name} (${model.publisher})` : model.name;
@@ -104,11 +109,12 @@ function formatModelLabel(model: { name: string; publisher?: string }): string {
 
 async function fetchProviderModels(
   payload: {
-    providerType: 'github-models' | 'openai-compatible';
+    providerType: 'github-models' | 'openai-compatible' | 'azure-ai-foundry';
     token?: string;
     baseUrl?: string;
     apiKey?: string;
     model?: string;
+    endpoint?: string;
   },
   fallback: ModelEntry[] = [],
 ): Promise<ModelEntry[]> {
@@ -206,6 +212,31 @@ async function getCustomModels(): Promise<ModelEntry[]> {
   );
 }
 
+async function getAzureModels(): Promise<ModelEntry[]> {
+  const endpoint = azureEndpoint.value.trim();
+  if (!endpoint) return [];
+
+  const fallback = savedAzureModel
+    ? [
+        {
+          provider: 'azure-ai-foundry' as const,
+          id: savedAzureModel,
+          name: savedAzureModel,
+        },
+      ]
+    : [];
+
+  return fetchProviderModels(
+    {
+      providerType: 'azure-ai-foundry',
+      endpoint,
+      apiKey: azureKey.value.trim(),
+      model: savedAzureModel,
+    },
+    fallback,
+  );
+}
+
 async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
   const previous = preserveSelection ?? unifiedModel.value;
 
@@ -214,10 +245,11 @@ async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
   unifiedModel.innerHTML = '<option value="">Loading models…</option>';
 
   // Fetch all provider models in parallel
-  const [githubModels, anthropicModels, customModels] = await Promise.all([
+  const [githubModels, anthropicModels, customModels, azureModels] = await Promise.all([
     githubToken.value.trim() ? fetchGithubModels() : Promise.resolve([]),
     Promise.resolve(getAnthropicModels()),
     getCustomModels(),
+    getAzureModels(),
   ]);
 
   unifiedModel.innerHTML = '';
@@ -229,6 +261,8 @@ async function rebuildModelDropdown(preserveSelection?: string): Promise<void> {
     groups.push({ label: 'Anthropic (Claude)', models: anthropicModels });
   if (customModels.length > 0)
     groups.push({ label: 'Custom Endpoint', models: customModels });
+  if (azureModels.length > 0)
+    groups.push({ label: 'Azure AI Foundry', models: azureModels });
 
   if (groups.length === 0) {
     modelMetadata.clear();
@@ -330,11 +364,15 @@ async function loadSettings(): Promise<void> {
   openaiUrl.value = config.provider.openaiCompatible?.baseUrl ?? '';
   openaiKey.value = config.provider.openaiCompatible?.apiKey ?? '';
   savedOpenAIModel = config.provider.openaiCompatible?.model ?? '';
+  azureEndpoint.value = config.provider.azureAiFoundry?.endpoint ?? '';
+  azureKey.value = config.provider.azureAiFoundry?.apiKey ?? '';
+  savedAzureModel = config.provider.azureAiFoundry?.model ?? '';
 
   // Open details sections that have credentials
   if (githubToken.value) githubDetails.open = true;
   if (anthropicKey.value) anthropicDetails.open = true;
   if (openaiUrl.value) openaiDetails.open = true;
+  if (azureEndpoint.value) azureDetails.open = true;
 
   // Determine the currently-selected model value
   const activeType = config.provider.type;
@@ -345,6 +383,8 @@ async function loadSettings(): Promise<void> {
     activeModel = config.provider.anthropic?.model ?? 'claude-sonnet-4-6';
   } else if (activeType === 'openai-compatible') {
     activeModel = config.provider.openaiCompatible?.model ?? '';
+  } else if (activeType === 'azure-ai-foundry') {
+    activeModel = config.provider.azureAiFoundry?.model ?? '';
   }
   const selectedValue = encodeModelValue(activeType, activeModel);
 
@@ -382,6 +422,11 @@ function gatherConfig(): ExtensionConfig {
       apiKey: anthropicKey.value.trim(),
       model: providerType === 'anthropic' ? modelId : '',
     },
+    azureAiFoundry: {
+      endpoint: azureEndpoint.value.trim(),
+      apiKey: azureKey.value.trim(),
+      model: providerType === 'azure-ai-foundry' ? modelId : savedAzureModel,
+    },
   };
 
   const analysis: AnalysisConfig = {
@@ -414,6 +459,8 @@ githubToken.addEventListener('input', onCredentialChange);
 anthropicKey.addEventListener('input', onCredentialChange);
 openaiUrl.addEventListener('input', onCredentialChange);
 openaiKey.addEventListener('input', onCredentialChange);
+azureEndpoint.addEventListener('input', onCredentialChange);
+azureKey.addEventListener('input', onCredentialChange);
 
 refreshModelsBtn.addEventListener('click', () => {
   rebuildModelDropdown();
@@ -423,6 +470,9 @@ unifiedModel.addEventListener('change', () => {
   const decoded = decodeModelValue(unifiedModel.value);
   if (decoded?.provider === 'openai-compatible') {
     savedOpenAIModel = decoded.model;
+  }
+  if (decoded?.provider === 'azure-ai-foundry') {
+    savedAzureModel = decoded.model;
   }
   updateModelInfo();
 });

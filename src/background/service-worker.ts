@@ -7,6 +7,7 @@ import {
 } from '../tokenizer/kuromoji-tokenizer';
 import { GitHubModelsProvider } from '../providers/github-models';
 import { OpenAICompatibleProvider } from '../providers/openai-compatible';
+import { AzureAiFoundryProvider } from '../providers/azure-ai-foundry';
 import { FALLBACK_GITHUB_MODELS } from '../shared/config';
 import type {
   ExtensionConfig,
@@ -99,6 +100,10 @@ async function handleAnalysisRequest(
           if (config.provider.openaiCompatible)
             config.provider.openaiCompatible.model = model;
           break;
+        case 'azure-ai-foundry':
+          if (config.provider.azureAiFoundry)
+            config.provider.azureAiFoundry.model = model;
+          break;
       }
     }
 
@@ -183,11 +188,45 @@ async function handleFetchModels(
   const config = await getConfig();
   const providerType =
     request?.providerType ??
-    (request?.baseUrl
-      ? 'openai-compatible'
-      : request?.token
-        ? 'github-models'
-        : config.provider.type);
+    (request?.endpoint
+      ? 'azure-ai-foundry'
+      : request?.baseUrl
+        ? 'openai-compatible'
+        : request?.token
+          ? 'github-models'
+          : config.provider.type);
+
+  if (providerType === 'azure-ai-foundry') {
+    const endpoint =
+      request?.endpoint?.trim() ||
+      config.provider.azureAiFoundry?.endpoint?.trim();
+    const apiKey =
+      request?.apiKey ?? config.provider.azureAiFoundry?.apiKey ?? '';
+    const fallbackModels = buildSavedModelFallback(
+      request?.model ?? config.provider.azureAiFoundry?.model,
+      endpoint,
+    );
+
+    if (!endpoint) {
+      return {
+        models: fallbackModels,
+        error: 'No Azure AI Foundry endpoint configured',
+      };
+    }
+
+    try {
+      const models = await AzureAiFoundryProvider.fetchAvailableModels(
+        endpoint,
+        apiKey,
+      );
+      return { models: models.length > 0 ? models : fallbackModels };
+    } catch (error) {
+      return {
+        models: fallbackModels,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
 
   if (providerType === 'openai-compatible') {
     const baseUrl =

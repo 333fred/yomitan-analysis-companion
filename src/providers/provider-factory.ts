@@ -4,6 +4,7 @@ import { getConfig } from '../shared/storage';
 import { GitHubModelsProvider } from './github-models';
 import { OpenAICompatibleProvider } from './openai-compatible';
 import { AnthropicProvider } from './anthropic';
+import { AzureAiFoundryProvider } from './azure-ai-foundry';
 
 export function createProvider(config: ProviderConfig): ILLMProvider {
   switch (config.type) {
@@ -39,6 +40,20 @@ export function createProvider(config: ProviderConfig): ILLMProvider {
         );
       }
       return new AnthropicProvider(ac.apiKey, ac.model ?? 'claude-sonnet-4-6');
+    }
+
+    case 'azure-ai-foundry': {
+      const az = config.azureAiFoundry;
+      if (!az?.endpoint) {
+        throw new Error(
+          'Azure AI Foundry provider requires an endpoint URL. Set it in the extension options.',
+        );
+      }
+      return new AzureAiFoundryProvider(
+        az.endpoint,
+        az.apiKey ?? '',
+        az.model ?? '',
+      );
     }
 
     default:

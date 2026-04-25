@@ -82,6 +82,7 @@ export interface FetchModelsRequest {
     baseUrl?: string;
     apiKey?: string;
     model?: string;
+    endpoint?: string;
   };
 }
 
@@ -110,7 +111,7 @@ export interface ExtensionConfig {
 }
 
 export interface ProviderConfig {
-  type: 'github-models' | 'openai-compatible' | 'anthropic';
+  type: 'github-models' | 'openai-compatible' | 'anthropic' | 'azure-ai-foundry';
   githubModels?: {
     token: string;
     model: string;
@@ -121,6 +122,11 @@ export interface ProviderConfig {
     model: string;
   };
   anthropic?: {
+    apiKey: string;
+    model: string;
+  };
+  azureAiFoundry?: {
+    endpoint: string;
     apiKey: string;
     model: string;
   };
