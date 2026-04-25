@@ -470,8 +470,7 @@ unifiedModel.addEventListener('change', () => {
   const decoded = decodeModelValue(unifiedModel.value);
   if (decoded?.provider === 'openai-compatible') {
     savedOpenAIModel = decoded.model;
-  }
-  if (decoded?.provider === 'azure-ai-foundry') {
+  } else if (decoded?.provider === 'azure-ai-foundry') {
     savedAzureModel = decoded.model;
   }
   updateModelInfo();
